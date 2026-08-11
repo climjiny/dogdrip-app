@@ -124,7 +124,6 @@ class DogDripBackend:
 
             soup = BeautifulSoup(res.text, 'html.parser')
             
-            # 파싱으로 제목 가져오기
             title_el = soup.select_one('h1.ed.title, div.document_title, h1.ed, h1, a.title')
             parsed_title = title_el.get_text(strip=True) if title_el else ""
             
@@ -187,8 +186,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 viewport에 화면 확대(더블탭/핀치 줌) 허용 설정
-            # 📌 '게시글 상세' 밑에 크고 선명하게 제목 배치
+            # 📌 이미지 터치 확대/더블탭/핀치줌 라이트박스 JS 탑재
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -204,7 +202,6 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
-                        touch-action: manipulation;
                     }}
                     .detail-header-label {{
                         font-size: 14px;
@@ -228,6 +225,7 @@ class DogDripBackend:
                         display: block;
                         margin: 10px auto;
                         border-radius: 8px;
+                        cursor: zoom-in;
                     }}
                     iframe {{
                         max-width: 100%;
@@ -259,12 +257,137 @@ class DogDripBackend:
                         display: none !important;
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
+
+                    /* 🔎 이미지 확대 뷰어 모달 라이트박스 */
+                    #image-viewer-modal {{
+                        display: none;
+                        position: fixed;
+                        top: 0; left: 0; width: 100%; height: 100%;
+                        background-color: rgba(0, 0, 0, 0.9);
+                        z-index: 999999;
+                        overflow: hidden;
+                        touch-action: none;
+                    }}
+                    #image-viewer-img {{
+                        position: absolute;
+                        top: 50%; left: 50%;
+                        transform: translate(-50%, -50%) scale(1);
+                        max-width: 95%; max-height: 95%;
+                        transition: transform 0.1s ease-out;
+                        cursor: grab;
+                    }}
+                    #image-viewer-close {{
+                        position: absolute;
+                        top: 20px; right: 20px;
+                        color: white; font-size: 30px; font-weight: bold;
+                        background: rgba(255,255,255,0.2);
+                        border-radius: 50%; width: 44px; height: 44px;
+                        display: flex; align-items: center; justify-content: center;
+                        cursor: pointer; z-index: 1000000;
+                    }}
+                    .viewer-hint {{
+                        position: absolute; bottom: 20px; width: 100%;
+                        text-align: center; color: rgba(255,255,255,0.8);
+                        font-size: 13px; pointer-events: none;
+                    }}
                 </style>
             </head>
             <body>
                 <div class="detail-header-label">게시글 상세</div>
                 <div class="article-title-box">📌 {final_title}</div>
-                <div class="article-body">{clean_body_html}</div>
+                <div class="article-body" id="article-body">{clean_body_html}</div>
+
+                <!-- 🔍 이미지 전용 확대 라이트박스 -->
+                <div id="image-viewer-modal">
+                    <div id="image-viewer-close">✕</div>
+                    <img id="image-viewer-img" src="" alt="확대 이미지">
+                    <div class="viewer-hint">💡 손가락 두 개로 벌리거나 더블탭하여 확대하세요</div>
+                </div>
+
+                <script>
+                    // 이미지 확대 모달 제어 및 핀치 줌 스크립트
+                    const modal = document.getElementById('image-viewer-modal');
+                    const modalImg = document.getElementById('image-viewer-img');
+                    const closeBtn = document.getElementById('image-viewer-close');
+                    const images = document.querySelectorAll('#article-body img');
+
+                    let scale = 1, lastScale = 1;
+                    let pointX = 0, pointY = 0, startX = 0, startY = 0;
+                    let isDragging = false;
+                    let initialDistance = 0;
+                    let lastTap = 0;
+
+                    images.forEach(img => {{
+                        img.addEventListener('click', (e) => {{
+                            e.preventDefault();
+                            modalImg.src = img.src;
+                            modal.style.display = 'block';
+                            resetZoom();
+                        }});
+                    }});
+
+                    closeBtn.onclick = () => modal.style.display = 'none';
+                    modal.onclick = (e) => {{ if (e.target === modal) modal.style.display = 'none'; }};
+
+                    function resetZoom() {{
+                        scale = 1; lastScale = 1; pointX = 0; pointY = 0;
+                        updateTransform();
+                    }}
+
+                    function updateTransform() {{
+                        modalImg.style.transform = `translate(calc(-50% + ${{pointX}}px), calc(-50% + ${{pointY}}px)) scale(${{scale}})`;
+                    }}
+
+                    //더블탭 확대/축소
+                    modal.addEventListener('touchend', (e) => {{
+                        const currentTime = new Date().getTime();
+                        const tapLength = currentTime - lastTap;
+                        if (tapLength < 300 && tapLength > 0) {{
+                            if (scale > 1.5) {{
+                                resetZoom();
+                            }} else {{
+                                scale = 2.5; pointX = 0; pointY = 0;
+                                updateTransform();
+                            }}
+                            e.preventDefault();
+                        }}
+                        lastTap = currentTime;
+                    }});
+
+                    // 핀치 줌 및 이동 처리
+                    modal.addEventListener('touchstart', (e) => {{
+                        if (e.touches.length === 2) {{
+                            initialDistance = Math.hypot(
+                                e.touches[0].pageX - e.touches[1].pageX,
+                                e.touches[0].pageY - e.touches[1].pageY
+                            );
+                        }} else if (e.touches.length === 1 && scale > 1) {{
+                            isDragging = true;
+                            startX = e.touches[0].clientX - pointX;
+                            startY = e.touches[0].clientY - pointY;
+                        }}
+                    }});
+
+                    modal.addEventListener('touchmove', (e) => {{
+                        if (e.touches.length === 2) {{
+                            const currentDistance = Math.hypot(
+                                e.touches[0].pageX - e.touches[1].pageX,
+                                e.touches[0].pageY - e.touches[1].pageY
+                            );
+                            scale = Math.min(Math.max(1, lastScale * (currentDistance / initialDistance)), 5);
+                            updateTransform();
+                        }} else if (e.touches.length === 1 && isDragging) {{
+                            pointX = e.touches[0].clientX - startX;
+                            pointY = e.touches[0].clientY - startY;
+                            updateTransform();
+                        }}
+                    }});
+
+                    modal.addEventListener('touchend', (e) => {{
+                        lastScale = scale;
+                        isDragging = false;
+                    }});
+                </script>
             </body>
             </html>
             """
@@ -275,10 +398,8 @@ class DogDripBackend:
 # ---------------------------------------------------------
 # Streamlit UI & 세션 상태 복원
 # ---------------------------------------------------------
-# 캐시 에러 방지를 위해 객체를 직접 생성
 backend = DogDripBackend()
 
-# URL 쿼리 파라미터 파싱
 query_params = st.query_params
 url_article = query_params.get("article", None)
 
@@ -293,17 +414,14 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 새로고침 시 게시글 목록 자동 복구
 if not st.session_state.current_articles:
     res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
     if res["success"]:
         st.session_state.current_articles = res["articles"]
 
-# 최상단 이동용 앵커
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
 st.title("🐶 개드립 모바일 열람기")
 
-# 상단 컨트롤 바
 col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
 
 with col_home:
@@ -348,11 +466,9 @@ if st.session_state.selected_article:
     can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
     can_next = True
 
-    # 선택된 글 제목 세션 동기화
     if current_idx >= 0 and not st.session_state.selected_title:
         st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
 
-    # 상단 컨트롤 버튼
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
     with col_back:
@@ -473,7 +589,6 @@ if st.session_state.selected_article:
             if (target && !target.disabled) target.click();
         };
 
-        // --- 📱 스마트폰 뒤로가기 스크립트 ---
         if (!topWin.history.state || topWin.history.state.mode !== 'detail') {
             topWin.history.pushState({ mode: 'detail' }, '', topWin.location.href);
         }
@@ -491,7 +606,6 @@ if st.session_state.selected_article:
     st.divider()
 
     with st.spinner("본문 및 댓글 로딩 중..."):
-        # 안전한 호출방식 적용
         detail = backend.fetch_article_detail(
             st.session_state.selected_article, 
             fallback_title=st.session_state.get("selected_title", "")
@@ -499,7 +613,7 @@ if st.session_state.selected_article:
         if detail["success"]:
             components.html(
                 detail["html"], 
-                height=2200, 
+                height=2500, 
                 scrolling=False
             )
         else:
