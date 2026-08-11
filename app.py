@@ -366,12 +366,10 @@ class DogDripBackend:
                         updateTransform();
                     }}
 
-                    // 📌 마우스 더블클릭 확장 / 축소 지원
                     document.addEventListener('dblclick', (e) => {{
                         toggleZoom();
                     }});
 
-                    // 📌 Ctrl + 마우스 휠 지원 (블루투스 마우스 Zoom)
                     document.addEventListener('wheel', (e) => {{
                         if (e.ctrlKey) {{
                             e.preventDefault();
@@ -381,9 +379,8 @@ class DogDripBackend:
                         }}
                     }}, {{ passive: false }});
 
-                    // 📌 터치 이벤트 처리 (더블탭 + 핀치 줌)
                     document.addEventListener('touchstart', (e) => {{
-                        hasMoved = false; // 이동 유무 초기화
+                        hasMoved = false;
                         
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
@@ -398,7 +395,7 @@ class DogDripBackend:
                     }});
 
                     document.addEventListener('touchmove', (e) => {{
-                        hasMoved = true; // 조금이라도 손가락 움직이면 스크롤로 간주
+                        hasMoved = true;
                         
                         if (e.touches.length === 2) {{
                             const currentDistance = Math.hypot(
@@ -419,12 +416,10 @@ class DogDripBackend:
                     document.addEventListener('touchend', (e) => {{
                         if (e.touches.length > 0) return;
 
-                        // 스크롤 이동이 아니었던 정지 터치에 한해서만 더블탭 감지
                         if (!hasMoved) {{
                             const now = new Date().getTime();
                             const timeDiff = now - lastTapTime;
 
-                            // 250ms 이내 더블탭 시 확대/축소 토글
                             if (timeDiff < 250 && timeDiff > 0) {{
                                 toggleZoom();
                             }}
@@ -483,6 +478,32 @@ keyword_input = st.text_input(
     placeholder="🔍 검색어 입력...", 
     label_visibility="collapsed"
 )
+
+# 📌 검색창 엔터 키 이벤트 감지 및 처리 스크립트 추가
+components.html("""
+<script>
+    const doc = window.parent.document;
+    const inputs = doc.querySelectorAll('input[type="text"]');
+    inputs.forEach(input => {
+        // 이미 이벤트를 등록했는지 확인하는 속성 체크
+        if (!input.dataset.enterBound) {
+            input.dataset.enterBound = "true";
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    // 엔터 입력 시 검색 버튼(🔍)을 찾아 자동으로 클릭 실행
+                    const buttons = doc.querySelectorAll('button');
+                    for (let btn of buttons) {
+                        if (btn.innerText.includes('🔍')) {
+                            btn.click();
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+""", height=0)
 
 current_links = [art["link"] for art in st.session_state.current_articles]
 current_idx = current_links.index(st.session_state.selected_article) if (st.session_state.selected_article and st.session_state.selected_article in current_links) else -1
