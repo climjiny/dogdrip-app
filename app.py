@@ -142,8 +142,9 @@ class DogDripBackend:
                 for el in comment_el.select('.number, .num, .vote-count, .vote'):
                     el.decompose()
 
+                # 댓글 시작점 식별용 id='comment-start-point' 추가
                 body_html += f"""
-                <div class='comment-section-box'>
+                <div id='comment-start-point' class='comment-section-box'>
                     <h3 class='comment-section-header'>💬 댓글</h3>
                     {str(comment_el)}
                 </div>
@@ -196,7 +197,6 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
-                        overflow: hidden;
                     }}
                     .article-title {{
                         font-size: 18px;
@@ -246,7 +246,7 @@ class DogDripBackend:
                 </style>
             </head>
             <body>
-                <div class="article-title">{title_text}</div>
+                <div id="article-start-point" class="article-title">{title_text}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
@@ -274,44 +274,57 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 플로팅 위/아래 스크롤 버튼 CSS 및 HTML
+# 우측 하단 플로팅 핫키 메뉴 (위치 상향 조정 & 스크롤 JS 보완)
 st.markdown("""
 <style>
     .scroll-btn-container {
         position: fixed;
-        bottom: 25px;
-        right: 15px;
+        bottom: 80px; /* Streamlit 아이콘 피하기 위해 위치를 위로 상승 */
+        right: 16px;
         z-index: 999999;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
     }
     .scroll-btn {
-        width: 40px;
-        height: 40px;
-        background-color: rgba(37, 99, 235, 0.65);
+        width: 44px;
+        height: 44px;
+        background-color: rgba(37, 99, 235, 0.85);
         color: white;
         border: none;
         border-radius: 50%;
         font-size: 16px;
         font-weight: bold;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
         backdrop-filter: blur(4px);
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    .scroll-btn:hover {
-        background-color: rgba(37, 99, 235, 0.95);
-        transform: scale(1.08);
+    .scroll-btn:active {
+        transform: scale(0.92);
+        background-color: rgba(29, 78, 216, 1);
     }
 </style>
 
 <div class="scroll-btn-container">
-    <button class="scroll-btn" onclick="window.scrollTo({top: 0, behavior: 'smooth'});">▲</button>
-    <button class="scroll-btn" onclick="window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});">▼</button>
+    <button class="scroll-btn" title="게시글 상단" onclick="
+        const iframe = document.querySelector('iframe');
+        if(iframe && iframe.contentWindow) {
+            iframe.contentWindow.document.getElementById('article-start-point')?.scrollIntoView({behavior: 'smooth'});
+        } else {
+            window.parent.scrollTo({top: 0, behavior: 'smooth'});
+        }
+    ">▲</button>
+    
+    <button class="scroll-btn" title="댓글 위치로" onclick="
+        const iframe = document.querySelector('iframe');
+        if(iframe && iframe.contentWindow) {
+            iframe.contentWindow.document.getElementById('comment-start-point')?.scrollIntoView({behavior: 'smooth'});
+        }
+    ">💬</button>
 </div>
 """, unsafe_allow_html=True)
 
@@ -351,11 +364,23 @@ with col_btn2:
 # 본문 보기 화면
 # ---------------------------------------------------------
 if st.session_state.selected_article:
-    # 이전글 / 다음글 위치 추적 로직
     current_links = [art["link"] for art in st.session_state.current_articles]
     current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
 
-    # 상단 컨트롤 버튼 (목록으로 / 원글 보기 / 이전글 / 다음글)
+    can_prev = (current_idx > 0)
+    can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
+
+    # 2. 요구사항: 이전글 / 다음글 플로팅 핫키 버튼 추가 (우측 하단)
+    st.markdown(f"""
+    <div class="scroll-btn-container" style="bottom: 186px;">
+        <button class="scroll-btn" style="background-color: {'rgba(37, 99, 235, 0.85)' if can_prev else 'rgba(148, 163, 184, 0.5)'}" 
+                title="이전글" onclick="document.getElementById('floating-prev-btn')?.click();" {'disabled' if not can_prev else ''}>◀</button>
+        <button class="scroll-btn" style="background-color: {'rgba(37, 99, 235, 0.85)' if can_next else 'rgba(148, 163, 184, 0.5)'}" 
+                title="다음글" onclick="document.getElementById('floating-next-btn')?.click();" {'disabled' if not can_next else ''}>▶</button>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 상단 컨트롤 버튼 (기존 유지)
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
     with col_back:
@@ -364,16 +389,12 @@ if st.session_state.selected_article:
             st.rerun()
             
     with col_prev:
-        # 이전 글 이동 버튼
-        can_prev = (current_idx > 0)
-        if st.button("◀ 이전글", disabled=not can_prev, use_container_width=True):
+        if st.button("◀ 이전글", key="floating-prev-btn", disabled=not can_prev, use_container_width=True):
             st.session_state.selected_article = current_links[current_idx - 1]
             st.rerun()
 
     with col_next:
-        # 다음 글 이동 버튼
-        can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
-        if st.button("다음글 ▶", disabled=not can_next, use_container_width=True):
+        if st.button("다음글 ▶", key="floating-next-btn", disabled=not can_next, use_container_width=True):
             st.session_state.selected_article = current_links[current_idx + 1]
             st.rerun()
 
@@ -395,7 +416,7 @@ if st.session_state.selected_article:
             components.html(
                 detail["html"], 
                 height=1800, 
-                scrolling=False
+                scrolling=True
             )
         else:
             st.error(f"오류 발생: {detail['error']}")
@@ -408,7 +429,7 @@ else:
         res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
 
     if res["success"] and res["articles"]:
-        st.session_state.current_articles = res["articles"] # 목록 데이터 캐싱 (이전/다음 글 용)
+        st.session_state.current_articles = res["articles"]
         
         status_msg = f"🔍 '{st.session_state.search_keyword}' 검색결과 ({st.session_state.page} 페이지)" if st.session_state.search_keyword else f"📄 현재 {st.session_state.page} 페이지 (총 {len(res['articles'])}개 게시글)"
         st.caption(status_msg)
