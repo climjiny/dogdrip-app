@@ -186,7 +186,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 이미지 터치 확대/더블탭/핀치줌 라이트박스 JS 탑재
+            # 📌 게시물 화면 직접 확대/축소 스크립트 적용
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -202,7 +202,19 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
+                        overflow-x: hidden;
+                        touch-action: pan-x pan-y;
                     }}
+
+                    /* 전체 확대 컨테이너 */
+                    #zoom-container {{
+                        transform-origin: 0 0;
+                        width: 100%;
+                        box-sizing: border-box;
+                        padding: 10px;
+                        transition: transform 0.05s linear;
+                    }}
+
                     .detail-header-label {{
                         font-size: 14px;
                         font-weight: 700;
@@ -225,7 +237,6 @@ class DogDripBackend:
                         display: block;
                         margin: 10px auto;
                         border-radius: 8px;
-                        cursor: zoom-in;
                     }}
                     iframe {{
                         max-width: 100%;
@@ -257,105 +268,59 @@ class DogDripBackend:
                         display: none !important;
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
-
-                    /* 🔎 이미지 확대 뷰어 모달 라이트박스 */
-                    #image-viewer-modal {{
-                        display: none;
-                        position: fixed;
-                        top: 0; left: 0; width: 100%; height: 100%;
-                        background-color: rgba(0, 0, 0, 0.9);
-                        z-index: 999999;
-                        overflow: hidden;
-                        touch-action: none;
-                    }}
-                    #image-viewer-img {{
-                        position: absolute;
-                        top: 50%; left: 50%;
-                        transform: translate(-50%, -50%) scale(1);
-                        max-width: 95%; max-height: 95%;
-                        transition: transform 0.1s ease-out;
-                        cursor: grab;
-                    }}
-                    #image-viewer-close {{
-                        position: absolute;
-                        top: 20px; right: 20px;
-                        color: white; font-size: 30px; font-weight: bold;
-                        background: rgba(255,255,255,0.2);
-                        border-radius: 50%; width: 44px; height: 44px;
-                        display: flex; align-items: center; justify-content: center;
-                        cursor: pointer; z-index: 1000000;
-                    }}
-                    .viewer-hint {{
-                        position: absolute; bottom: 20px; width: 100%;
-                        text-align: center; color: rgba(255,255,255,0.8);
-                        font-size: 13px; pointer-events: none;
-                    }}
                 </style>
             </head>
             <body>
-                <div class="detail-header-label">게시글 상세</div>
-                <div class="article-title-box">📌 {final_title}</div>
-                <div class="article-body" id="article-body">{clean_body_html}</div>
-
-                <!-- 🔍 이미지 전용 확대 라이트박스 -->
-                <div id="image-viewer-modal">
-                    <div id="image-viewer-close">✕</div>
-                    <img id="image-viewer-img" src="" alt="확대 이미지">
-                    <div class="viewer-hint">💡 손가락 두 개로 벌리거나 더블탭하여 확대하세요</div>
+                <div id="zoom-container">
+                    <div class="detail-header-label">게시글 상세</div>
+                    <div class="article-title-box">📌 {final_title}</div>
+                    <div class="article-body">{clean_body_html}</div>
                 </div>
 
                 <script>
-                    // 이미지 확대 모달 제어 및 핀치 줌 스크립트
-                    const modal = document.getElementById('image-viewer-modal');
-                    const modalImg = document.getElementById('image-viewer-img');
-                    const closeBtn = document.getElementById('image-viewer-close');
-                    const images = document.querySelectorAll('#article-body img');
+                    const container = document.getElementById('zoom-container');
 
-                    let scale = 1, lastScale = 1;
-                    let pointX = 0, pointY = 0, startX = 0, startY = 0;
+                    let scale = 1;
+                    let lastScale = 1;
+                    let pointX = 0, pointY = 0;
+                    let startX = 0, startY = 0;
                     let isDragging = false;
                     let initialDistance = 0;
-                    let lastTap = 0;
-
-                    images.forEach(img => {{
-                        img.addEventListener('click', (e) => {{
-                            e.preventDefault();
-                            modalImg.src = img.src;
-                            modal.style.display = 'block';
-                            resetZoom();
-                        }});
-                    }});
-
-                    closeBtn.onclick = () => modal.style.display = 'none';
-                    modal.onclick = (e) => {{ if (e.target === modal) modal.style.display = 'none'; }};
-
-                    function resetZoom() {{
-                        scale = 1; lastScale = 1; pointX = 0; pointY = 0;
-                        updateTransform();
-                    }}
+                    let lastTapTime = 0;
 
                     function updateTransform() {{
-                        modalImg.style.transform = `translate(calc(-50% + ${{pointX}}px), calc(-50% + ${{pointY}}px)) scale(${{scale}})`;
+                        // 최소 축소 배율 1.0 (원본 크기) 제한, 최대 4.0
+                        scale = Math.min(Math.max(1, scale), 4);
+                        if (scale === 1) {{
+                            pointX = 0;
+                            pointY = 0;
+                        }}
+                        container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                     }}
 
-                    //더블탭 확대/축소
-                    modal.addEventListener('touchend', (e) => {{
-                        const currentTime = new Date().getTime();
-                        const tapLength = currentTime - lastTap;
-                        if (tapLength < 300 && tapLength > 0) {{
-                            if (scale > 1.5) {{
-                                resetZoom();
+                    // 더블탭 이벤트 (150% 확대 <-> 100% 원본 복원)
+                    document.addEventListener('touchend', (e) => {{
+                        if (e.touches.length > 0) return;
+                        
+                        const now = new Date().getTime();
+                        const timeDiff = now - lastTapTime;
+
+                        if (timeDiff < 300 && timeDiff > 0) {{
+                            if (scale > 1.05) {{
+                                scale = 1;
                             }} else {{
-                                scale = 2.5; pointX = 0; pointY = 0;
-                                updateTransform();
+                                scale = 1.5; // 150% 확대
                             }}
+                            pointX = 0;
+                            pointY = 0;
+                            updateTransform();
                             e.preventDefault();
                         }}
-                        lastTap = currentTime;
+                        lastTapTime = now;
                     }});
 
-                    // 핀치 줌 및 이동 처리
-                    modal.addEventListener('touchstart', (e) => {{
+                    // 손가락 2개 터치(핀치 줌) 및 손가락 1개 드래그 이동
+                    document.addEventListener('touchstart', (e) => {{
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -368,22 +333,24 @@ class DogDripBackend:
                         }}
                     }});
 
-                    modal.addEventListener('touchmove', (e) => {{
+                    document.addEventListener('touchmove', (e) => {{
                         if (e.touches.length === 2) {{
                             const currentDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
                                 e.touches[0].pageY - e.touches[1].pageY
                             );
-                            scale = Math.min(Math.max(1, lastScale * (currentDistance / initialDistance)), 5);
-                            updateTransform();
+                            if (initialDistance > 0) {{
+                                scale = lastScale * (currentDistance / initialDistance);
+                                updateTransform();
+                            }}
                         }} else if (e.touches.length === 1 && isDragging) {{
                             pointX = e.touches[0].clientX - startX;
                             pointY = e.touches[0].clientY - startY;
                             updateTransform();
                         }}
-                    }});
+                    }}, {{ passive: false }});
 
-                    modal.addEventListener('touchend', (e) => {{
+                    document.addEventListener('touchend', (e) => {{
                         lastScale = scale;
                         isDragging = false;
                     }});
