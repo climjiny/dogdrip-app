@@ -140,21 +140,58 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
+            # 📌 댓글 파이썬 직접 분해 및 재조립 (핵심 수정 부분!)
             if comment_el:
-                # 불필요 요소 즉시제거
-                for unneeded in comment_el.select('form, .comment-editor, .btn-area, .rhymix_comment_editor, .vote, .voted_count, .vote_area, .vote-count, .number, .num, .action'):
-                    unneeded.decompose()
+                # 총 댓글 수 카운트
+                cmt_count_el = comment_el.select_one('.comment-header, h3, .title')
+                cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글"
 
-                body_html += f"""
-                <div class='comment-section-box'>
-                    <h3 class='comment-section-header'>💬 댓글</h3>
-                    {str(comment_el)}
-                </div>
-                """
+                rebuilt_comments_html = f"<div class='comment-section-box'><h3 class='comment-section-header'>💬 {cmt_count_text}</h3>"
+
+                # 개별 댓글 파싱
+                cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content')
+                
+                if not cmt_items:
+                    cmt_items = comment_el.select('li')
+
+                for cmt in cmt_items:
+                    # 닉네임 / 아이콘
+                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl')
+                    author_html = str(author_el) if author_el else "<span style='font-weight:bold; color:#2563eb;'>익명</span>"
+
+                    # 시간
+                    date_el = cmt.select_one('.date, span.time, time, .time')
+                    date_text = date_el.get_text(strip=True) if date_el else ""
+
+                    # 본문
+                    content_body = cmt.select_one('.xe_content, .comment-body, .text')
+                    content_html = str(content_body) if content_body else ""
+
+                    # 대댓글(답글) 여부 판단 (여백 부여)
+                    is_reply = False
+                    if 'indent' in cmt.get('class', []) or 'reply' in cmt.get('class', []) or 'parent' in str(cmt.get('style', '')):
+                        is_reply = True
+                    margin_left = "20px" if is_reply else "0px"
+
+                    if content_html:
+                        rebuilt_comments_html += f"""
+                        <div style="margin-left: {margin_left}; padding: 8px 12px; margin-bottom: 6px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <div style="font-weight: 700; color: #2563eb; display: inline-flex; align-items: center; gap: 4px;">{author_html}</div>
+                                <div style="color: #64748b; font-size: 12px; font-weight: 500;">{date_text}</div>
+                            </div>
+                            <div style="color: #0f172a; font-size: 13.5px; line-height: 1.4;">
+                                {content_html}
+                            </div>
+                        </div>
+                        """
+
+                rebuilt_comments_html += "</div>"
+                body_html += rebuilt_comments_html
 
             temp_soup = BeautifulSoup(body_html, 'html.parser')
 
-            # 📌 이미지, 비디오, 링크 상대경로 -> 절대경로 보정
+            # 상대경로 보정
             for tag in temp_soup.select('img, video, source, a, iframe'):
                 for attr in ['src', 'poster', 'data-src', 'href']:
                     if tag.has_attr(attr):
@@ -242,8 +279,6 @@ class DogDripBackend:
                         min-height: 250px;
                         border: none;
                     }}
-                    
-                    /* 📌 댓글 영역 강력 변경 CSS */
                     .comment-section-box {{
                         margin-top: 20px;
                         padding-top: 10px;
@@ -255,68 +290,6 @@ class DogDripBackend:
                         color: #1e40af;
                         margin-bottom: 10px;
                     }}
-                    
-                    /* 개드립 원본 댓글 개별 컨테이너 */
-                    div[id^="comment_"], .comment-item, .comment-doc, div.comment-content {{
-                        padding: 10px 14px !important;
-                        margin-bottom: 8px !important;
-                        border-radius: 6px !important;
-                        background: #f8fafc !important;
-                        border: 1px solid #f1f5f9 !important;
-                        font-size: 14px !important;
-                        line-height: 1.4 !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                    }}
-
-                    /* 댓글 헤더 (닉네임 + 작성 시간 가로 배치 강제) */
-                    div[id^="comment_"] > div:first-child, 
-                    .comment-item .meta, 
-                    .comment-doc .meta, 
-                    .comment-header,
-                    div.ed.flex.flex-wrap {{
-                        display: flex !important;
-                        flex-direction: row !important;
-                        align-items: center !important;
-                        justify-content: flex-start !important;
-                        gap: 10px !important;
-                        margin-bottom: 6px !important;
-                        width: 100% !important;
-                    }}
-
-                    /* 작성자 닉네임 */
-                    .author, .member_srl, a[class*="member_"], span[class*="member_"] {{
-                        font-weight: 700 !important;
-                        color: #2563eb !important;
-                        display: inline-flex !important;
-                        align-items: center !important;
-                        gap: 4px !important;
-                        margin: 0 !important;
-                    }}
-
-                    /* 작성 시간 (19분 전) */
-                    .date, span.time, .date-time, div[id^="comment_"] time {{
-                        color: #64748b !important;
-                        font-size: 12.5px !important;
-                        font-weight: 500 !important;
-                        display: inline-block !important;
-                        margin: 0 !important;
-                    }}
-
-                    /* 댓글 본문 */
-                    .xe_content, .comment-body, div[id^="comment_"] .ed {{
-                        margin-top: 4px !important;
-                        color: #0f172a !important;
-                        font-size: 14px !important;
-                        display: block !important;
-                        width: 100% !important;
-                    }}
-
-                    /* 추천 수 / 비추천 / 답글 버튼 숨김 */
-                    .vote, .voted_count, .vote_area, .vote-count, .action, .number, .num, div[class*="vote"] {{
-                        display: none !important;
-                    }}
-
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
             </head>
@@ -337,34 +310,6 @@ class DogDripBackend:
                     let isDragging = false;
                     let initialDistance = 0;
                     let lastTapTime = 0;
-
-                    // 📌 JS로 개드립 댓글 DOM 구조를 강제로 요청하신 모양으로 재조립
-                    function restructureComments() {{
-                        const comments = document.querySelectorAll('div[id^="comment_"]');
-                        comments.forEach(cmt => {{
-                            const authorEl = cmt.querySelector('.author, .member_srl, a[class*="member_"], span[class*="member_"]');
-                            const dateEl = cmt.querySelector('.date, span.time, time');
-                            const contentEl = cmt.querySelector('.xe_content');
-
-                            if (authorEl && dateEl && contentEl) {{
-                                // 기존 요소 제거 후 변경된 구조로 덮어쓰기
-                                const authorHtml = authorEl.outerHTML;
-                                const dateText = dateEl.innerText || dateEl.textContent;
-                                const contentHtml = contentEl.outerHTML;
-
-                                cmt.innerHTML = `
-                                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
-                                        ${{authorHtml}}
-                                        <span style="color:#64748b; font-size:12.5px; font-weight:500;">${{dateText}}</span>
-                                    </div>
-                                    <div style="margin-top:2px;">${{contentHtml}}</div>
-                                `;
-                            }}
-                        }});
-                    }}
-
-                    window.addEventListener('DOMContentLoaded', restructureComments);
-                    setTimeout(restructureComments, 300); // 렌더링 지연 대비 2차 실행
 
                     function updateTransform() {{
                         scale = Math.min(Math.max(1, scale), 4);
