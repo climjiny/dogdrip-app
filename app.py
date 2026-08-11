@@ -144,7 +144,7 @@ class DogDripBackend:
 
                 body_html += f"""
                 <div id='comment-start-point' class='comment-section-box'>
-                    <h3 class='comment-section-header'>💬 댓글</h3>
+                    <h3 id='comment-target-header' class='comment-section-header'>💬 댓글</h3>
                     {str(comment_el)}
                 </div>
                 """
@@ -244,22 +244,19 @@ class DogDripBackend:
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
                 <script>
-                    // 부모 창으로 댓글 위치(Top Y 좌표)를 계산해서 전송
-                    function sendCommentOffset() {{
-                        const cmt = document.getElementById('comment-start-point');
-                        if (cmt) {{
-                            const rect = cmt.getBoundingClientRect();
-                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                            const totalOffset = rect.top + scrollTop;
-                            window.parent.postMessage({{ type: 'COMMENT_OFFSET', offset: totalOffset }}, '*');
+                    // 부모 창으로 파란색 '💬 댓글' 타이틀의 정확한 Y 오프셋을 전송
+                    function notifyCommentOffset() {{
+                        const target = document.getElementById('comment-target-header') || document.getElementById('comment-start-point');
+                        if (target) {{
+                            const topPos = target.offsetTop;
+                            window.parent.postMessage({{ type: 'SET_COMMENT_TOP', offsetTop: topPos }}, '*');
                         }}
                     }}
 
-                    window.addEventListener('message', function(e) {{
-                        if (e.data === 'GET_COMMENT_OFFSET') {{
-                            sendCommentOffset();
-                        }}
-                    }});
+                    window.onload = function() {{
+                        setTimeout(notifyCommentOffset, 300);
+                        setTimeout(notifyCommentOffset, 1000); // 이미지 로딩 시 위치 변동 대비 2차 전송
+                    }};
                 </script>
             </head>
             <body>
@@ -273,7 +270,7 @@ class DogDripBackend:
             return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>"}
 
 # ---------------------------------------------------------
-# Streamlit UI
+# Streamlit UI & URL Query Param 처리 (새로고침 시 게시글 유지)
 # ---------------------------------------------------------
 @st.cache_resource
 def get_backend():
@@ -281,7 +278,13 @@ def get_backend():
 
 backend = get_backend()
 
-# Session State 초기화
+# URL 쿼리 파라미터 확인 (새로고침 대응)
+query_params = st.query_params
+url_article = query_params.get("article", None)
+
+if url_article and "selected_article" not in st.session_state:
+    st.session_state.selected_article = url_article
+
 if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
@@ -291,7 +294,7 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 최상단 이동용 앵커 포인트
+# 최상단 이동용 앵커
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
 st.title("🐶 개드립 모바일 열람기")
 
@@ -303,6 +306,7 @@ with col_home:
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.query_params.clear()
         st.rerun()
 
 with col_search:
@@ -318,17 +322,20 @@ with col_btn1:
         st.session_state.search_keyword = keyword_input
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.query_params.clear()
         st.rerun()
 
 with col_btn2:
     if st.button("🔄 새로고침", use_container_width=True):
-        st.session_state.selected_article = None
         st.rerun()
 
 # ---------------------------------------------------------
 # 본문 보기 화면
 # ---------------------------------------------------------
 if st.session_state.selected_article:
+    # URL 쿼리 파라미터에 현재 선택한 게시글 링크 등록 (새로고침 시 유지용)
+    st.query_params["article"] = st.session_state.selected_article
+
     current_links = [art["link"] for art in st.session_state.current_articles]
     current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
 
@@ -342,18 +349,21 @@ if st.session_state.selected_article:
         btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
         if btn_back:
             st.session_state.selected_article = None
+            st.query_params.clear()
             st.rerun()
             
     with col_prev:
         btn_prev = st.button("◀ 이전글", disabled=not can_prev, use_container_width=True, key="main_btn_prev")
         if btn_prev:
             st.session_state.selected_article = current_links[current_idx - 1]
+            st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
     with col_next:
         btn_next = st.button("다음글 ▶", disabled=not can_next, use_container_width=True, key="main_btn_next")
         if btn_next:
             st.session_state.selected_article = current_links[current_idx + 1]
+            st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
     with col_link:
@@ -366,7 +376,7 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 플로팅 핫키 스크립트 (아래쪽 화살표 ▼ 적용 및 메인 창 좌표계산 스크롤)
+    # 플로팅 핫키 스크립트 (댓글 위치 정확 이동 로직 최적화)
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -407,12 +417,22 @@ if st.session_state.selected_article:
 
         box.innerHTML = `
             <button id="float-top" style="${btnStyle}" title="게시글 상단으로">▲</button>
-            <button id="float-cmt" style="${btnStyle}" title="댓글 시작점으로">▼</button>
+            <button id="float-cmt" style="${btnStyle}" title="댓글 위치로 이동">▼</button>
             <button id="float-prev" style="${btnStyle}" title="이전글">◀</button>
             <button id="float-next" style="${btnStyle}" title="다음글">▶</button>
         `;
 
         doc.body.appendChild(box);
+
+        // 댓글 상대 높이 저장 변수
+        window.commentRelativeTop = 0;
+
+        // iframe에서 댓글 위치 측정값이 올 때 파싱
+        window.addEventListener('message', function(e) {
+            if (e.data && e.data.type === 'SET_COMMENT_TOP') {
+                window.commentRelativeTop = e.data.offsetTop;
+            }
+        });
 
         // ▲ 최상단 이동
         doc.getElementById('float-top').onclick = () => {
@@ -424,30 +444,22 @@ if st.session_state.selected_article:
             }
         };
 
-        // ▼ 댓글 위치로 메인 화면 직접 스크롤
+        // ▼ 댓글 파란색 타이틀 위치로 스크롤
         doc.getElementById('float-cmt').onclick = () => {
             const iframes = Array.from(doc.querySelectorAll('iframe'));
-            // 본문 내용이 들어간 높이가 큰 iframe 검색
             const articleIframe = iframes.find(i => i.height === "2200" || i.offsetHeight > 500);
             
             if (articleIframe) {
-                // iframe 상단 위치를 부모 좌표 기준으로 계산
                 const iframeRect = articleIframe.getBoundingClientRect();
                 const parentScrollTop = window.parent.pageYOffset || doc.documentElement.scrollTop;
-                const iframeAbsoluteTop = iframeRect.top + parentScrollTop;
                 
-                // 댓글 수신 대기 설정
-                const messageHandler = function(e) {
-                    if (e.data && e.data.type === 'COMMENT_OFFSET') {
-                        const commentY = iframeAbsoluteTop + e.data.offset;
-                        window.parent.scrollTo({ top: commentY, behavior: 'smooth' });
-                        window.removeEventListener('message', messageHandler);
-                    }
-                };
-                window.addEventListener('message', messageHandler);
+                // iframe 상단 좌표 + 내부에 계산된 댓글 타이틀 오프셋
+                const targetY = iframeRect.top + parentScrollTop + (window.commentRelativeTop || 800);
                 
-                // iframe에 offset 좌표 요청
-                articleIframe.contentWindow.postMessage('GET_COMMENT_OFFSET', '*');
+                window.parent.scrollTo({
+                    top: targetY,
+                    behavior: 'smooth'
+                });
             }
         };
 
@@ -505,6 +517,9 @@ if st.session_state.selected_article:
 # 게시글 목록 화면
 # ---------------------------------------------------------
 else:
+    # 목록으로 나올 때는 쿼리 파라미터 초기화
+    st.query_params.clear()
+
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -528,6 +543,7 @@ else:
         for art in res["articles"]:
             if st.button(art["title"], key=art["link"], use_container_width=True):
                 st.session_state.selected_article = art["link"]
+                st.query_params["article"] = art["link"]
                 st.rerun()
 
         st.divider()
