@@ -154,7 +154,9 @@ class DogDripBackend:
                 final_title = "게시글 상세"
 
             content_el = soup.select_one('div.ed.article-content, div.xe_content, div.read_body, article')
-            comment_el = soup.select_one('#commentbox, div.comment-list, #cmtPosition, div.comment')
+            
+            # 📌 2번 수정사항: 다양한 댓글 영역 셀렉터 추가 (댓글누락 완벽 방지)
+            comment_el = soup.select_one('#commentbox, div.comment-list, #cmtPosition, div.comment, #comment, div.xe_comment')
 
             body_html = ""
             if content_el:
@@ -162,28 +164,29 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 댓글 영역 (레벨 아이콘 + 닉네임 + 작성시간 한 줄 배치)
+            # 댓글 영역 처리
             if comment_el:
-                cmt_count_el = comment_el.select_one('.comment-header, h3, .title')
-                cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글"
+                cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
+                cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
 
                 rebuilt_comments_html = f"<div class='comment-section-box'><h3 class='comment-section-header'>💬 {cmt_count_text}</h3>"
 
-                cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content')
+                # 댓글 항목 추출 패턴 보강
+                cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content, li[id^="comment_"]')
                 if not cmt_items:
-                    cmt_items = comment_el.select('li')
+                    cmt_items = comment_el.select('li, div.item')
 
                 for cmt in cmt_items:
                     icon_el = cmt.select_one('img[src*="level"], img[src*="icon"], span.level, i.level')
                     icon_html = str(icon_el) if icon_el else ""
 
-                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl')
+                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl, .nick')
                     author_text = author_el.get_text(strip=True) if author_el else "익명"
 
                     date_el = cmt.select_one('.date, span.time, time, .time')
                     date_text = date_el.get_text(strip=True) if date_el else ""
 
-                    content_body = cmt.select_one('.xe_content, .comment-body, .text')
+                    content_body = cmt.select_one('.xe_content, .comment-body, .text, .content')
                     content_html = str(content_body) if content_body else ""
 
                     is_reply = False
@@ -240,6 +243,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
+            # 📌 1번 수정사항: #article-title-target 앵커 추가 + 진입 즉시 제목 위치로 자동 스크롤
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -319,12 +323,24 @@ class DogDripBackend:
             </head>
             <body>
                 <div id="zoom-container">
+                    <div id="article-title-target"></div>
                     <div class="detail-header-label">게시글 상세</div>
                     <div class="article-title-box">📌 {final_title}</div>
                     <div class="article-body">{clean_body_html}</div>
                 </div>
 
                 <script>
+                    // 📌 진입시 상단 제목 위치로 자동 스크롤
+                    window.addEventListener('load', () => {{
+                        setTimeout(() => {{
+                            window.scrollTo({{ top: 0, behavior: 'smooth' }});
+                            if (window.parent && window.parent.document) {{
+                                const target = window.parent.document.getElementById('article-title-target');
+                                if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                            }}
+                        }}, 100);
+                    }});
+
                     const container = document.getElementById('zoom-container');
 
                     let scale = 1;
@@ -450,7 +466,7 @@ if not st.session_state.current_articles:
 
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
 
-# 📌 1. 로고 깨짐 방지를 위해 이모지(🐶) 기반의 한 줄 깔끔한 로고 제목으로 수정
+# 헤더
 st.markdown("""
 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; margin-top: -10px;">
     <span style="font-size: 24px;">🐶</span>
@@ -470,7 +486,7 @@ current_links = [art["link"] for art in st.session_state.current_articles]
 current_idx = current_links.index(st.session_state.selected_article) if (st.session_state.selected_article and st.session_state.selected_article in current_links) else -1
 can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
 
-# 📌 2. 검색창 아래 버튼 6개가 한 줄(가로)로 모바일에 쏙 들어가도록 배치
+# 6개 아이콘 버튼 1줄 배치
 b_col1, b_col2, b_col3, b_col4, b_col5, b_col6 = st.columns(6)
 
 with b_col1:
@@ -541,10 +557,21 @@ if st.session_state.selected_article:
     if current_idx >= 0 and not st.session_state.selected_title:
         st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
 
+    # 📌 진입시 제목 위치 앵커 삽입 및 스크롤 이벤트 발생
+    st.markdown("<div id='article-title-target' style='scroll-margin-top: 10px;'></div>", unsafe_allow_html=True)
+
     components.html("""
     <script>
         const doc = window.parent.document;
         const topWin = window.top;
+
+        // 게시물 진입 시 부모 창 스크롤을 제목 위치로 이동
+        const titleTarget = doc.getElementById('article-title-target');
+        if (titleTarget) {
+            titleTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            topWin.scrollTo({ top: 0, behavior: 'smooth' });
+        }
 
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
@@ -588,7 +615,7 @@ if st.session_state.selected_article:
         doc.body.appendChild(box);
 
         doc.getElementById('float-top').onclick = () => {
-            const topEl = doc.getElementById('app-top-anchor');
+            const topEl = doc.getElementById('article-title-target');
             if (topEl) {
                 topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
