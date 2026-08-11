@@ -49,7 +49,7 @@ class DogDripBackend:
     def fetch_articles(self, page=1, keyword=""):
         self.current_page = max(1, page)
         keyword = keyword.strip()
-        self.articles.clear()
+        articles_list = []
 
         try:
             if keyword:
@@ -91,7 +91,7 @@ class DogDripBackend:
                     else:
                         link = "https://www.dogdrip.net" + (clean_href if clean_href.startswith('/') else "/" + clean_href)
 
-                    if any(art['link'] == link for art in self.articles):
+                    if any(art['link'] == link for art in articles_list):
                         continue
 
                     title_text = a_tag.get_text(strip=True)
@@ -102,9 +102,9 @@ class DogDripBackend:
                     if title_clean in ["개드립", "인기글", "목록", "다음", "이전", "글쓰기"]:
                         continue
 
-                    self.articles.append({"title": title_clean, "link": link})
+                    articles_list.append({"title": title_clean, "link": link})
 
-            return {"success": True, "articles": self.articles, "page": self.current_page}
+            return {"success": True, "articles": articles_list, "page": self.current_page}
         except Exception as e:
             return {"success": False, "error": str(e), "articles": [], "page": self.current_page}
 
@@ -276,7 +276,7 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 새로고침 등으로 게시글 목록이 날아간 경우 자동 복구
+# 새로고침 시 게시글 목록 자동 복구
 if not st.session_state.current_articles:
     res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
     if res["success"]:
@@ -326,10 +326,11 @@ if st.session_state.selected_article:
     current_links = [art["link"] for art in st.session_state.current_articles]
     current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
 
-    can_prev = (current_idx > 0)
-    can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
+    # 이전글 / 다음글 이동 로직 (페이지 연속 넘어감 대응)
+    can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
+    can_next = True
 
-    # 상단 컨트롤 버튼 (목록 / 이전 / 다음 / 원글)
+    # 상단 컨트롤 버튼
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
     with col_back:
@@ -342,14 +343,30 @@ if st.session_state.selected_article:
     with col_prev:
         btn_prev = st.button("◀ 이전글", disabled=not can_prev, use_container_width=True, key="main_btn_prev")
         if btn_prev:
-            st.session_state.selected_article = current_links[current_idx - 1]
+            if current_idx > 0:
+                st.session_state.selected_article = current_links[current_idx - 1]
+            elif st.session_state.page > 1:
+                # 이전 페이지의 마지막 글 수집 후 이동
+                st.session_state.page -= 1
+                res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
+                if res["success"] and res["articles"]:
+                    st.session_state.current_articles = res["articles"]
+                    st.session_state.selected_article = res["articles"][-1]["link"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
     with col_next:
         btn_next = st.button("다음글 ▶", disabled=not can_next, use_container_width=True, key="main_btn_next")
         if btn_next:
-            st.session_state.selected_article = current_links[current_idx + 1]
+            if current_idx >= 0 and current_idx < len(current_links) - 1:
+                st.session_state.selected_article = current_links[current_idx + 1]
+            else:
+                # 다음 페이지의 첫 번째 글 수집 후 이동
+                st.session_state.page += 1
+                res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
+                if res["success"] and res["articles"]:
+                    st.session_state.current_articles = res["articles"]
+                    st.session_state.selected_article = res["articles"][0]["link"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -363,17 +380,19 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 플로팅 핫키 스크립트 (▼ 댓글버튼 제거됨)
+    # 플로팅 버튼 및 강력해진 스마트폰 뒤로가기 제어 스크립트
     components.html("""
     <script>
         const doc = window.parent.document;
+        const win = window.parent;
         
+        // 이전 플로팅 박스 제거
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
 
+        // 플로팅 버튼 박스 생성
         const box = doc.createElement('div');
         box.id = 'custom-floating-box';
-        
         box.style.cssText = `
             position: fixed;
             bottom: 80px;
@@ -416,7 +435,7 @@ if st.session_state.selected_article:
             if (topEl) {
                 topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
-                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+                win.scrollTo({ top: 0, behavior: 'smooth' });
             }
         };
 
@@ -434,25 +453,15 @@ if st.session_state.selected_article:
             if (target && !target.disabled) target.click();
         };
 
-        // 스마트폰 뒤로가기 연동
-        if (!window.parent.location.hash.includes('detail')) {
-            window.parent.history.pushState({ page: 'detail' }, '', window.parent.location.href + '#detail');
+        // --- 스마트폰 뒤로가기 제어 (강력 수정) ---
+        if (!win.history.state || win.history.state.page !== 'detail') {
+            win.history.pushState({ page: 'detail' }, '', win.location.href);
         }
 
-        window.parent.onpopstate = function(event) {
+        win.onpopstate = function(event) {
             const btns = Array.from(doc.querySelectorAll('button'));
             const backBtn = btns.find(b => b.innerText.includes('목록으로'));
             if (backBtn) backBtn.click();
-        };
-
-        window.parent.onkeydown = function(e) {
-            if (e.key === 'Backspace') {
-                const active = doc.activeElement;
-                if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
-                const btns = Array.from(doc.querySelectorAll('button'));
-                const backBtn = btns.find(b => b.innerText.includes('목록으로'));
-                if (backBtn) backBtn.click();
-            }
         };
     </script>
     """, height=0)
@@ -479,11 +488,12 @@ else:
     components.html("""
     <script>
         const doc = window.parent.document;
+        const win = window.parent;
+        
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
         
-        window.parent.onpopstate = null;
-        window.parent.onkeydown = null;
+        win.onpopstate = null;
     </script>
     """, height=0)
 
