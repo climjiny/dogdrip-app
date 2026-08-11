@@ -108,7 +108,7 @@ class DogDripBackend:
         except Exception as e:
             return {"success": False, "error": str(e), "articles": [], "page": self.current_page}
 
-    def fetch_article_detail(self, link):
+    def fetch_article_detail(self, link, fallback_title=""):
         try:
             if self.session:
                 res = self.session.get(link, timeout=10, verify=False)
@@ -123,8 +123,14 @@ class DogDripBackend:
                 return {"success": False, "error": f"HTTP 오류 {res.status_code}"}
 
             soup = BeautifulSoup(res.text, 'html.parser')
-            title_el = soup.select_one('h1.ed.title, div.document_title, h1, a.title')
-            title_text = title_el.get_text(strip=True) if title_el else "게시글 상세"
+            
+            # 파싱으로 제목 가져오기, 실패 시 전달받은 목록 제목 사용
+            title_el = soup.select_one('h1.ed.title, div.document_title, h1.ed, h1, a.title')
+            parsed_title = title_el.get_text(strip=True) if title_el else ""
+            
+            final_title = parsed_title if parsed_title else fallback_title
+            if not final_title:
+                final_title = "게시글 상세"
 
             content_el = soup.select_one('div.ed.article-content, div.xe_content, div.read_body, article')
             comment_el = soup.select_one('#commentbox, div.comment-list, #cmtPosition, div.comment')
@@ -181,13 +187,14 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 [요청 반영] "게시글 상세" 아래, 본문 시작점 바로 위에 제목 배치
+            # 📌 [요청 반영 1] viewport에 화면 확대(확대 제스처/더블탭) 허용 설정
+            # 📌 [요청 반영 2] '게시글 상세' 글자 바로 밑에 크고 명확하게 제목 배치
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
             <head>
                 <meta charset="utf-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
                 <meta name="referrer" content="no-referrer">
                 <style>
                     html, body {{
@@ -197,20 +204,21 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
+                        touch-action: manipulation;
                     }}
                     .detail-header-label {{
-                        font-size: 13px;
+                        font-size: 14px;
                         font-weight: 700;
-                        color: #64748b;
-                        margin-bottom: 4px;
+                        color: #475569;
+                        margin-bottom: 6px;
                     }}
                     .article-title-box {{
-                        font-size: 18px;
+                        font-size: 20px;
                         font-weight: 800;
                         color: #0f172a;
                         margin-bottom: 16px;
-                        padding-bottom: 10px;
-                        border-bottom: 2px solid #e2e8f0;
+                        padding-bottom: 12px;
+                        border-bottom: 2px solid #cbd5e1;
                         word-break: keep-all;
                         line-height: 1.4;
                     }}
@@ -255,12 +263,12 @@ class DogDripBackend:
             </head>
             <body>
                 <div class="detail-header-label">게시글 상세</div>
-                <div class="article-title-box">{title_text}</div>
+                <div class="article-title-box">📌 {final_title}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
             """
-            return {"success": True, "html": full_html, "link": link, "title": title_text}
+            return {"success": True, "html": full_html, "link": link, "title": final_title}
         except Exception as e:
             return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>", "title": "오류"}
 
@@ -281,6 +289,8 @@ if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
     st.session_state.selected_article = url_article
+if "selected_title" not in st.session_state:
+    st.session_state.selected_title = ""
 if "search_keyword" not in st.session_state:
     st.session_state.search_keyword = ""
 if "current_articles" not in st.session_state:
@@ -304,6 +314,7 @@ with col_home:
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -320,6 +331,7 @@ with col_btn1:
         st.session_state.search_keyword = keyword_input
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -339,6 +351,10 @@ if st.session_state.selected_article:
     can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
     can_next = True
 
+    # 선택된 글 제목 세션 동기화
+    if current_idx >= 0 and not st.session_state.selected_title:
+        st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
+
     # 상단 컨트롤 버튼
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
@@ -346,6 +362,7 @@ if st.session_state.selected_article:
         btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
         if btn_back:
             st.session_state.selected_article = None
+            st.session_state.selected_title = ""
             st.query_params.clear()
             st.rerun()
             
@@ -354,12 +371,14 @@ if st.session_state.selected_article:
         if btn_prev:
             if current_idx > 0:
                 st.session_state.selected_article = current_links[current_idx - 1]
+                st.session_state.selected_title = st.session_state.current_articles[current_idx - 1]["title"]
             elif st.session_state.page > 1:
                 st.session_state.page -= 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][-1]["link"]
+                    st.session_state.selected_title = res["articles"][-1]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -368,12 +387,14 @@ if st.session_state.selected_article:
         if btn_next:
             if current_idx >= 0 and current_idx < len(current_links) - 1:
                 st.session_state.selected_article = current_links[current_idx + 1]
+                st.session_state.selected_title = st.session_state.current_articles[current_idx + 1]["title"]
             else:
                 st.session_state.page += 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][0]["link"]
+                    st.session_state.selected_title = res["articles"][0]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -473,7 +494,10 @@ if st.session_state.selected_article:
     st.divider()
 
     with st.spinner("본문 및 댓글 로딩 중..."):
-        detail = backend.fetch_article_detail(st.session_state.selected_article)
+        detail = backend.fetch_article_detail(
+            st.session_state.selected_article, 
+            fallback_title=st.session_state.selected_title
+        )
         if detail["success"]:
             components.html(
                 detail["html"], 
@@ -513,6 +537,7 @@ else:
         for art in res["articles"]:
             if st.button(art["title"], key=art["link"], use_container_width=True):
                 st.session_state.selected_article = art["link"]
+                st.session_state.selected_title = art["title"]
                 st.query_params["article"] = art["link"]
                 st.rerun()
 
