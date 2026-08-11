@@ -277,7 +277,23 @@ if not st.session_state.current_articles:
 
 # 최상단 이동용 앵커
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
+
+# 1. 앱 최상단 타이틀
 st.title("🐶 개드립 모바일 열람기")
+
+# 2. 📌 [요청 반영] 타이틀 바로 아래에 게시글 제목 표시 (상세 페이지일 때)
+if st.session_state.selected_article:
+    current_links = [art["link"] for art in st.session_state.current_articles]
+    current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
+    if not st.session_state.selected_title and current_idx >= 0:
+        st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
+
+    if st.session_state.selected_title:
+        st.markdown(f"""
+        <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0; border-left: 5px solid #1e40af;">
+            <h3 style="margin:0; font-size: 17px; color: #0f172a; word-break: keep-all; line-height: 1.4;">{st.session_state.selected_title}</h3>
+        </div>
+        """, unsafe_allow_html=True)
 
 # 상단 컨트롤 바
 col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
@@ -320,10 +336,6 @@ if st.session_state.selected_article:
 
     current_links = [art["link"] for art in st.session_state.current_articles]
     current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
-
-    # 제목이 세션에 없으면 현재 목록에서 추출
-    if not st.session_state.selected_title and current_idx >= 0:
-        st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
 
     can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
     can_next = True
@@ -381,20 +393,13 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 📌 요청하신 게시글 제목 표시 영역
-    if st.session_state.selected_title:
-        st.markdown(f"""
-        <div style="background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #1e40af;">
-            <h3 style="margin:0; font-size: 18px; color: #0f172a; word-break: keep-all;">{st.session_state.selected_title}</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # 스마트폰 뒤로가기 연동 (해시 #view 기반 강력 수정)
+    # 📌 플로팅 버튼 및 스마트폰 뒤로가기 완벽 제어
     components.html("""
     <script>
         const doc = window.parent.document;
-        const win = window.parent;
-        
+        const topWin = window.top;
+
+        // 기존 플로팅 버튼 박스 제거 및 재생성
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
 
@@ -441,7 +446,7 @@ if st.session_state.selected_article:
             if (topEl) {
                 topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
-                win.scrollTo({ top: 0, behavior: 'smooth' });
+                topWin.scrollTo({ top: 0, behavior: 'smooth' });
             }
         };
 
@@ -457,16 +462,16 @@ if st.session_state.selected_article:
             if (target && !target.disabled) target.click();
         };
 
-        // --- 모바일 뒤로가기 이벤트 완전 대응 ---
-        if (!win.location.hash.includes('view')) {
-            win.history.pushState({ page: 'view' }, '', win.location.href + '#view');
+        // --- 📱 스마트폰 뒤로가기 완전 해결 스크립트 ---
+        if (!topWin.history.state || topWin.history.state.mode !== 'detail') {
+            topWin.history.pushState({ mode: 'detail' }, '', topWin.location.href);
         }
 
-        win.onhashchange = function() {
-            if (!win.location.hash.includes('view')) {
-                const btns = Array.from(doc.querySelectorAll('button'));
-                const backBtn = btns.find(b => b.innerText.includes('목록으로'));
-                if (backBtn) backBtn.click();
+        topWin.onpopstate = function(e) {
+            const btns = Array.from(doc.querySelectorAll('button'));
+            const backBtn = btns.find(b => b.innerText.includes('목록으로'));
+            if (backBtn) {
+                backBtn.click();
             }
         };
     </script>
@@ -494,16 +499,13 @@ else:
     components.html("""
     <script>
         const doc = window.parent.document;
-        const win = window.parent;
+        const topWin = window.top;
         
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
         
-        // 목록으로 올 때 URL hash 정리
-        if (win.location.hash.includes('view')) {
-            win.history.replaceState(null, '', win.location.href.split('#')[0]);
-        }
-        win.onhashchange = null;
+        // 목록 화면 진입 시 뒤로가기 핸들러 해제
+        topWin.onpopstate = null;
     </script>
     """, height=0)
 
