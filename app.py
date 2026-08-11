@@ -144,7 +144,6 @@ class DogDripBackend:
 
                 body_html += f"""
                 <div id='comment-start-point' class='comment-section-box'>
-                    <a id='comment-anchor' style='display:block; position:relative; top:-20px;'></a>
                     <h3 class='comment-section-header'>💬 댓글</h3>
                     {str(comment_el)}
                 </div>
@@ -244,6 +243,24 @@ class DogDripBackend:
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
+                <script>
+                    // 부모 창으로 댓글 위치(Top Y 좌표)를 계산해서 전송
+                    function sendCommentOffset() {{
+                        const cmt = document.getElementById('comment-start-point');
+                        if (cmt) {{
+                            const rect = cmt.getBoundingClientRect();
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const totalOffset = rect.top + scrollTop;
+                            window.parent.postMessage({{ type: 'COMMENT_OFFSET', offset: totalOffset }}, '*');
+                        }}
+                    }}
+
+                    window.addEventListener('message', function(e) {{
+                        if (e.data === 'GET_COMMENT_OFFSET') {{
+                            sendCommentOffset();
+                        }}
+                    }});
+                </script>
             </head>
             <body>
                 <div class="article-title">{title_text}</div>
@@ -349,7 +366,7 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 플로팅 핫키 스크립트 (댓글 스크롤 직접 타겟팅 수정)
+    # 플로팅 핫키 스크립트 (아래쪽 화살표 ▼ 적용 및 메인 창 좌표계산 스크롤)
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -390,14 +407,14 @@ if st.session_state.selected_article:
 
         box.innerHTML = `
             <button id="float-top" style="${btnStyle}" title="게시글 상단으로">▲</button>
-            <button id="float-cmt" style="${btnStyle}" title="댓글 시작점으로">💬</button>
+            <button id="float-cmt" style="${btnStyle}" title="댓글 시작점으로">▼</button>
             <button id="float-prev" style="${btnStyle}" title="이전글">◀</button>
             <button id="float-next" style="${btnStyle}" title="다음글">▶</button>
         `;
 
         doc.body.appendChild(box);
 
-        // ▲ [최상단 스크롤]: 앱 최상단 앵커로 부모창 이동
+        // ▲ 최상단 이동
         doc.getElementById('float-top').onclick = () => {
             const topEl = doc.getElementById('app-top-anchor');
             if (topEl) {
@@ -407,23 +424,30 @@ if st.session_state.selected_article:
             }
         };
 
-        // 💬 [댓글 위치 스크롤]: 본문 iframe 내부의 #comment-anchor 직접 탐색 및 scrollIntoView 실행
+        // ▼ 댓글 위치로 메인 화면 직접 스크롤
         doc.getElementById('float-cmt').onclick = () => {
             const iframes = Array.from(doc.querySelectorAll('iframe'));
-            for (let iframe of iframes) {
-                try {
-                    const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
-                    const cmtAnchor = innerDoc.getElementById('comment-anchor') || innerDoc.getElementById('comment-start-point');
-                    if (cmtAnchor) {
-                        // 1. iframe 자체를 화면 시야로
-                        iframe.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                        // 2. iframe 내부 요소로 스크롤
-                        cmtAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        break;
+            // 본문 내용이 들어간 높이가 큰 iframe 검색
+            const articleIframe = iframes.find(i => i.height === "2200" || i.offsetHeight > 500);
+            
+            if (articleIframe) {
+                // iframe 상단 위치를 부모 좌표 기준으로 계산
+                const iframeRect = articleIframe.getBoundingClientRect();
+                const parentScrollTop = window.parent.pageYOffset || doc.documentElement.scrollTop;
+                const iframeAbsoluteTop = iframeRect.top + parentScrollTop;
+                
+                // 댓글 수신 대기 설정
+                const messageHandler = function(e) {
+                    if (e.data && e.data.type === 'COMMENT_OFFSET') {
+                        const commentY = iframeAbsoluteTop + e.data.offset;
+                        window.parent.scrollTo({ top: commentY, behavior: 'smooth' });
+                        window.removeEventListener('message', messageHandler);
                     }
-                } catch(e) {
-                    console.log(e);
-                }
+                };
+                window.addEventListener('message', messageHandler);
+                
+                // iframe에 offset 좌표 요청
+                articleIframe.contentWindow.postMessage('GET_COMMENT_OFFSET', '*');
             }
         };
 
