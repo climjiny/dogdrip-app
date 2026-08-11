@@ -197,14 +197,6 @@ class DogDripBackend:
                         line-height: 1.5;
                         background: #ffffff;
                     }}
-                    .article-title {{
-                        font-size: 18px;
-                        font-weight: 800;
-                        color: #0f172a;
-                        margin-bottom: 10px;
-                        padding-bottom: 8px;
-                        border-bottom: 2px solid #e2e8f0;
-                    }}
                     img, video {{
                         max-width: 100% !important;
                         height: auto !important;
@@ -245,14 +237,13 @@ class DogDripBackend:
                 </style>
             </head>
             <body>
-                <div class="article-title">{title_text}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
             """
-            return {"success": True, "html": full_html, "link": link}
+            return {"success": True, "html": full_html, "link": link, "title": title_text}
         except Exception as e:
-            return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>"}
+            return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>", "title": "오류"}
 
 # ---------------------------------------------------------
 # Streamlit UI & 세션 상태 복원
@@ -271,6 +262,8 @@ if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
     st.session_state.selected_article = url_article
+if "selected_title" not in st.session_state:
+    st.session_state.selected_title = ""
 if "search_keyword" not in st.session_state:
     st.session_state.search_keyword = ""
 if "current_articles" not in st.session_state:
@@ -294,6 +287,7 @@ with col_home:
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -310,6 +304,7 @@ with col_btn1:
         st.session_state.search_keyword = keyword_input
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -326,7 +321,10 @@ if st.session_state.selected_article:
     current_links = [art["link"] for art in st.session_state.current_articles]
     current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
 
-    # 이전글 / 다음글 이동 로직 (페이지 연속 넘어감 대응)
+    # 제목이 세션에 없으면 현재 목록에서 추출
+    if not st.session_state.selected_title and current_idx >= 0:
+        st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
+
     can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
     can_next = True
 
@@ -337,6 +335,7 @@ if st.session_state.selected_article:
         btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
         if btn_back:
             st.session_state.selected_article = None
+            st.session_state.selected_title = ""
             st.query_params.clear()
             st.rerun()
             
@@ -345,13 +344,14 @@ if st.session_state.selected_article:
         if btn_prev:
             if current_idx > 0:
                 st.session_state.selected_article = current_links[current_idx - 1]
+                st.session_state.selected_title = st.session_state.current_articles[current_idx - 1]["title"]
             elif st.session_state.page > 1:
-                # 이전 페이지의 마지막 글 수집 후 이동
                 st.session_state.page -= 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][-1]["link"]
+                    st.session_state.selected_title = res["articles"][-1]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -360,13 +360,14 @@ if st.session_state.selected_article:
         if btn_next:
             if current_idx >= 0 and current_idx < len(current_links) - 1:
                 st.session_state.selected_article = current_links[current_idx + 1]
+                st.session_state.selected_title = st.session_state.current_articles[current_idx + 1]["title"]
             else:
-                # 다음 페이지의 첫 번째 글 수집 후 이동
                 st.session_state.page += 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][0]["link"]
+                    st.session_state.selected_title = res["articles"][0]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -380,17 +381,23 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 플로팅 버튼 및 강력해진 스마트폰 뒤로가기 제어 스크립트
+    # 📌 요청하신 게시글 제목 표시 영역
+    if st.session_state.selected_title:
+        st.markdown(f"""
+        <div style="background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; margin-top: 10px; border-left: 5px solid #1e40af;">
+            <h3 style="margin:0; font-size: 18px; color: #0f172a; word-break: keep-all;">{st.session_state.selected_title}</h3>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 스마트폰 뒤로가기 연동 (해시 #view 기반 강력 수정)
     components.html("""
     <script>
         const doc = window.parent.document;
         const win = window.parent;
         
-        // 이전 플로팅 박스 제거
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
 
-        // 플로팅 버튼 박스 생성
         const box = doc.createElement('div');
         box.id = 'custom-floating-box';
         box.style.cssText = `
@@ -429,7 +436,6 @@ if st.session_state.selected_article:
 
         doc.body.appendChild(box);
 
-        // ▲ 최상단 이동
         doc.getElementById('float-top').onclick = () => {
             const topEl = doc.getElementById('app-top-anchor');
             if (topEl) {
@@ -439,29 +445,29 @@ if st.session_state.selected_article:
             }
         };
 
-        // ◀ 이전글
         doc.getElementById('float-prev').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
             const target = btns.find(b => b.innerText.includes('이전글'));
             if (target && !target.disabled) target.click();
         };
 
-        // ▶ 다음글
         doc.getElementById('float-next').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
             const target = btns.find(b => b.innerText.includes('다음글'));
             if (target && !target.disabled) target.click();
         };
 
-        // --- 스마트폰 뒤로가기 제어 (강력 수정) ---
-        if (!win.history.state || win.history.state.page !== 'detail') {
-            win.history.pushState({ page: 'detail' }, '', win.location.href);
+        // --- 모바일 뒤로가기 이벤트 완전 대응 ---
+        if (!win.location.hash.includes('view')) {
+            win.history.pushState({ page: 'view' }, '', win.location.href + '#view');
         }
 
-        win.onpopstate = function(event) {
-            const btns = Array.from(doc.querySelectorAll('button'));
-            const backBtn = btns.find(b => b.innerText.includes('목록으로'));
-            if (backBtn) backBtn.click();
+        win.onhashchange = function() {
+            if (!win.location.hash.includes('view')) {
+                const btns = Array.from(doc.querySelectorAll('button'));
+                const backBtn = btns.find(b => b.innerText.includes('목록으로'));
+                if (backBtn) backBtn.click();
+            }
         };
     </script>
     """, height=0)
@@ -493,7 +499,11 @@ else:
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
         
-        win.onpopstate = null;
+        // 목록으로 올 때 URL hash 정리
+        if (win.location.hash.includes('view')) {
+            win.history.replaceState(null, '', win.location.href.split('#')[0]);
+        }
+        win.onhashchange = null;
     </script>
     """, height=0)
 
@@ -509,6 +519,7 @@ else:
         for art in res["articles"]:
             if st.button(art["title"], key=art["link"], use_container_width=True):
                 st.session_state.selected_article = art["link"]
+                st.session_state.selected_title = art["title"]
                 st.query_params["article"] = art["link"]
                 st.rerun()
 
