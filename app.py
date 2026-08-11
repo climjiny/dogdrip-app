@@ -19,7 +19,7 @@ try:
 except ImportError:
     import requests as c_requests
 
-# 📌 CSS 스타일: 모바일 레이아웃 고정 및 워터마크/메뉴 숨기기
+# 📌 CSS 스타일: 모바일 레이아웃 고정 및 가능한 모든 불필요 요소 숨기기
 st.markdown("""
 <style>
     /* 상단 메뉴(햄버거 버튼), 헤더, 하단 워터마크 숨기기 */
@@ -28,6 +28,7 @@ st.markdown("""
     footer {visibility: hidden;}
     div[data-testid="stToolbar"] {visibility: hidden; height: 0%; position: fixed;}
     div[data-testid="stDecoration"] {visibility: hidden; height: 0%; position: fixed;}
+    div[data-testid="stStatusWidget"] {visibility: hidden; height: 0%; position: fixed;}
     
     /* 모바일 화면에서도 컬럼 레이아웃을 무조건 가로(Row) 6등분으로 강제 고정 */
     div[data-testid="stHorizontalBlock"] {
@@ -478,7 +479,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 검색창 (폼 이용)
+# 검색창 (폼 이용 - 엔터 검색 완벽 지원)
 with st.form(key="search_form", clear_on_submit=False):
     keyword_input = st.text_input(
         "검색어", 
