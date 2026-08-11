@@ -7,8 +7,8 @@ import streamlit.components.v1 as components
 
 # Page config
 st.set_page_config(
-    page_title="개드립 열람기",
-    page_icon="🐶",
+    page_title="개드립 모바일 열람기",
+    page_icon="https://www.dogdrip.net/favicon.ico",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -140,47 +140,50 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 📌 댓글 파이썬 직접 분해 및 재조립 (핵심 수정 부분!)
+            # 📌 1번 수정사항: 댓글 레벨 아이콘 + 닉네임 + 작성시간 한 줄(Flex) 가로배치 강제
             if comment_el:
-                # 총 댓글 수 카운트
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글"
 
                 rebuilt_comments_html = f"<div class='comment-section-box'><h3 class='comment-section-header'>💬 {cmt_count_text}</h3>"
 
-                # 개별 댓글 파싱
                 cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content')
-                
                 if not cmt_items:
                     cmt_items = comment_el.select('li')
 
                 for cmt in cmt_items:
-                    # 닉네임 / 아이콘
-                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl')
-                    author_html = str(author_el) if author_el else "<span style='font-weight:bold; color:#2563eb;'>익명</span>"
+                    # 레벨 아이콘/이미지 추출
+                    icon_el = cmt.select_one('img[src*="level"], img[src*="icon"], span.level, i.level')
+                    icon_html = str(icon_el) if icon_el else ""
 
-                    # 시간
+                    # 닉네임
+                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl')
+                    author_text = author_el.get_text(strip=True) if author_el else "익명"
+
+                    # 작성시간
                     date_el = cmt.select_one('.date, span.time, time, .time')
                     date_text = date_el.get_text(strip=True) if date_el else ""
 
-                    # 본문
+                    # 댓글 본문
                     content_body = cmt.select_one('.xe_content, .comment-body, .text')
                     content_html = str(content_body) if content_body else ""
 
-                    # 대댓글(답글) 여부 판단 (여백 부여)
+                    # 대댓글 여부
                     is_reply = False
                     if 'indent' in cmt.get('class', []) or 'reply' in cmt.get('class', []) or 'parent' in str(cmt.get('style', '')):
                         is_reply = True
-                    margin_left = "20px" if is_reply else "0px"
+                    margin_left = "16px" if is_reply else "0px"
 
                     if content_html:
                         rebuilt_comments_html += f"""
-                        <div style="margin-left: {margin_left}; padding: 8px 12px; margin-bottom: 6px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 6px;">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                                <div style="font-weight: 700; color: #2563eb; display: inline-flex; align-items: center; gap: 4px;">{author_html}</div>
-                                <div style="color: #64748b; font-size: 12px; font-weight: 500;">{date_text}</div>
+                        <div style="margin-left: {margin_left}; padding: 10px 12px; margin-bottom: 8px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px;">
+                            <!-- 📌 레벨 + 닉네임 + 시간 한 줄 정렬 -->
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: nowrap; overflow: hidden;">
+                                {f'<span style="display:inline-flex; align-items:center;">{icon_html}</span>' if icon_html else ''}
+                                <span style="font-weight: 700; color: #2563eb; font-size: 14px; white-space: nowrap;">{author_text}</span>
+                                <span style="color: #94a3b8; font-size: 12px; white-space: nowrap; margin-left: auto;">{date_text}</span>
                             </div>
-                            <div style="color: #0f172a; font-size: 13.5px; line-height: 1.4;">
+                            <div style="color: #0f172a; font-size: 14px; line-height: 1.45;">
                                 {content_html}
                             </div>
                         </div>
@@ -251,20 +254,20 @@ class DogDripBackend:
                     }}
 
                     .detail-header-label {{
-                        font-size: 14px;
+                        font-size: 13px;
                         font-weight: 700;
-                        color: #475569;
-                        margin-bottom: 6px;
+                        color: #64748b;
+                        margin-bottom: 4px;
                     }}
                     .article-title-box {{
-                        font-size: 20px;
+                        font-size: 18px;
                         font-weight: 800;
                         color: #0f172a;
-                        margin-bottom: 16px;
-                        padding-bottom: 12px;
-                        border-bottom: 2px solid #cbd5e1;
+                        margin-bottom: 12px;
+                        padding-bottom: 10px;
+                        border-bottom: 2px solid #e2e8f0;
                         word-break: keep-all;
-                        line-height: 1.4;
+                        line-height: 1.35;
                     }}
                     img, video {{
                         max-width: 100% !important;
@@ -273,6 +276,13 @@ class DogDripBackend:
                         margin: 10px auto;
                         border-radius: 8px;
                     }}
+                    /* 댓글 내부 레벨 아이콘 인라인 처리 */
+                    .comment-section-box img {{
+                        display: inline-block !important;
+                        margin: 0 !important;
+                        height: 16px !important;
+                        width: auto !important;
+                    }}
                     iframe {{
                         max-width: 100%;
                         width: 100%;
@@ -280,7 +290,7 @@ class DogDripBackend:
                         border: none;
                     }}
                     .comment-section-box {{
-                        margin-top: 20px;
+                        margin-top: 16px;
                         padding-top: 10px;
                         border-top: 2px dashed #e2e8f0;
                     }}
@@ -425,12 +435,32 @@ if not st.session_state.current_articles:
         st.session_state.current_articles = res["articles"]
 
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
-st.title("🐶 개드립 모바일 열람기")
 
-col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
+# 📌 2번 수정사항: 개드립 로고 아이콘 + 깔끔하게 줄인 한 줄 제목 헤더
+st.markdown("""
+<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; margin-top: -10px;">
+    <img src="https://www.dogdrip.net/favicon.ico" style="width: 26px; height: 26px; object-fit: contain;">
+    <span style="font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px; white-space: nowrap;">개드립 모바일 열람기</span>
+</div>
+""", unsafe_allow_html=True)
 
-with col_home:
-    if st.button("🏠 홈", use_container_width=True, type="secondary"):
+# 검색창
+keyword_input = st.text_input(
+    "검색어", 
+    value=st.session_state.search_keyword, 
+    placeholder="🔍 검색어 입력...", 
+    label_visibility="collapsed"
+)
+
+current_links = [art["link"] for art in st.session_state.current_articles]
+current_idx = current_links.index(st.session_state.selected_article) if (st.session_state.selected_article and st.session_state.selected_article in current_links) else -1
+can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
+
+# 📌 2번 수정사항: 검색창 아래 1줄 아이콘 버튼 네비게이션 ([🏠 홈] [🔍 검색] [🔄 새로고침] [📋 목록] [◀ 이전] [▶ 다음])
+b_col1, b_col2, b_col3, b_col4, b_col5, b_col6 = st.columns([1, 1, 1, 1, 1, 1])
+
+with b_col1:
+    if st.button("🏠", use_container_width=True, help="홈으로"):
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
@@ -438,16 +468,8 @@ with col_home:
         st.query_params.clear()
         st.rerun()
 
-with col_search:
-    keyword_input = st.text_input(
-        "검색어", 
-        value=st.session_state.search_keyword, 
-        placeholder="검색어 입력", 
-        label_visibility="collapsed"
-    )
-
-with col_btn1:
-    if st.button("🔍 검색", use_container_width=True):
+with b_col2:
+    if st.button("🔍", use_container_width=True, help="검색"):
         st.session_state.search_keyword = keyword_input
         st.session_state.page = 1
         st.session_state.selected_article = None
@@ -455,8 +477,45 @@ with col_btn1:
         st.query_params.clear()
         st.rerun()
 
-with col_btn2:
-    if st.button("🔄 새로고침", use_container_width=True):
+with b_col3:
+    if st.button("🔄", use_container_width=True, help="새로고침"):
+        st.rerun()
+
+with b_col4:
+    if st.button("📋", disabled=(not st.session_state.selected_article), use_container_width=True, help="목록으로"):
+        st.session_state.selected_article = None
+        st.session_state.selected_title = ""
+        st.query_params.clear()
+        st.rerun()
+
+with b_col5:
+    if st.button("◀", disabled=(not st.session_state.selected_article or not can_prev), use_container_width=True, help="이전글"):
+        if current_idx > 0:
+            st.session_state.selected_article = current_links[current_idx - 1]
+            st.session_state.selected_title = st.session_state.current_articles[current_idx - 1]["title"]
+        elif st.session_state.page > 1:
+            st.session_state.page -= 1
+            res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
+            if res["success"] and res["articles"]:
+                st.session_state.current_articles = res["articles"]
+                st.session_state.selected_article = res["articles"][-1]["link"]
+                st.session_state.selected_title = res["articles"][-1]["title"]
+        st.query_params["article"] = st.session_state.selected_article
+        st.rerun()
+
+with b_col6:
+    if st.button("▶", disabled=(not st.session_state.selected_article), use_container_width=True, help="다음글"):
+        if current_idx >= 0 and current_idx < len(current_links) - 1:
+            st.session_state.selected_article = current_links[current_idx + 1]
+            st.session_state.selected_title = st.session_state.current_articles[current_idx + 1]["title"]
+        else:
+            st.session_state.page += 1
+            res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
+            if res["success"] and res["articles"]:
+                st.session_state.current_articles = res["articles"]
+                st.session_state.selected_article = res["articles"][0]["link"]
+                st.session_state.selected_title = res["articles"][0]["title"]
+        st.query_params["article"] = st.session_state.selected_article
         st.rerun()
 
 # ---------------------------------------------------------
@@ -465,66 +524,8 @@ with col_btn2:
 if st.session_state.selected_article:
     st.query_params["article"] = st.session_state.selected_article
 
-    current_links = [art["link"] for art in st.session_state.current_articles]
-    current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
-
-    can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
-    can_next = True
-
     if current_idx >= 0 and not st.session_state.selected_title:
         st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
-
-    col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
-    
-    with col_back:
-        btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
-        if btn_back:
-            st.session_state.selected_article = None
-            st.session_state.selected_title = ""
-            st.query_params.clear()
-            st.rerun()
-            
-    with col_prev:
-        btn_prev = st.button("◀ 이전글", disabled=not can_prev, use_container_width=True, key="main_btn_prev")
-        if btn_prev:
-            if current_idx > 0:
-                st.session_state.selected_article = current_links[current_idx - 1]
-                st.session_state.selected_title = st.session_state.current_articles[current_idx - 1]["title"]
-            elif st.session_state.page > 1:
-                st.session_state.page -= 1
-                res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
-                if res["success"] and res["articles"]:
-                    st.session_state.current_articles = res["articles"]
-                    st.session_state.selected_article = res["articles"][-1]["link"]
-                    st.session_state.selected_title = res["articles"][-1]["title"]
-            st.query_params["article"] = st.session_state.selected_article
-            st.rerun()
-
-    with col_next:
-        btn_next = st.button("다음글 ▶", disabled=not can_next, use_container_width=True, key="main_btn_next")
-        if btn_next:
-            if current_idx >= 0 and current_idx < len(current_links) - 1:
-                st.session_state.selected_article = current_links[current_idx + 1]
-                st.session_state.selected_title = st.session_state.current_articles[current_idx + 1]["title"]
-            else:
-                st.session_state.page += 1
-                res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
-                if res["success"] and res["articles"]:
-                    st.session_state.current_articles = res["articles"]
-                    st.session_state.selected_article = res["articles"][0]["link"]
-                    st.session_state.selected_title = res["articles"][0]["title"]
-            st.query_params["article"] = st.session_state.selected_article
-            st.rerun()
-
-    with col_link:
-        st.markdown(
-            f'''<a href="{st.session_state.selected_article}" target="_blank" style="text-decoration:none;">
-                <button style="width:100%; height:38px; background-color:#ea580c; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">
-                    🌐 원글 보기
-                </button>
-            </a>''', 
-            unsafe_allow_html=True
-        )
 
     # 📌 플로팅 버튼 및 스마트폰 뒤로가기 제어
     components.html("""
@@ -555,12 +556,12 @@ if st.session_state.selected_article:
         box.ontouchend = () => setTimeout(() => box.style.opacity = '0.45', 1500);
 
         const btnStyle = `
-            width:44px; height:44px;
+            width:42px; height:42px;
             background:#1e40af; color:white;
             border:none; border-radius:50%;
-            font-size:16px; font-weight:bold;
+            font-size:15px; font-weight:bold;
             cursor:pointer;
-            box-shadow:0 3px 8px rgba(0,0,0,0.4);
+            box-shadow:0 3px 8px rgba(0,0,0,0.3);
             display:flex; align-items:center; justify-content:center;
             user-select:none; -webkit-tap-highlight-color:transparent;
         `;
@@ -584,13 +585,13 @@ if st.session_state.selected_article:
 
         doc.getElementById('float-prev').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
-            const target = btns.find(b => b.innerText.includes('이전글'));
+            const target = btns.find(b => b.innerText.trim() === '◀');
             if (target && !target.disabled) target.click();
         };
 
         doc.getElementById('float-next').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
-            const target = btns.find(b => b.innerText.includes('다음글'));
+            const target = btns.find(b => b.innerText.trim() === '▶');
             if (target && !target.disabled) target.click();
         };
 
@@ -600,7 +601,7 @@ if st.session_state.selected_article:
 
         topWin.onpopstate = function(e) {
             const btns = Array.from(doc.querySelectorAll('button'));
-            const backBtn = btns.find(b => b.innerText.includes('목록으로'));
+            const backBtn = btns.find(b => b.innerText.trim() === '📋');
             if (backBtn) {
                 backBtn.click();
             }
