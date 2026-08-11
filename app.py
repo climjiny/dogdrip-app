@@ -153,7 +153,7 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 댓글 중복 방지 로직
+            # 댓글 중복 방지 (Set 활용)
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
@@ -238,7 +238,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 본문 HTML 내부에 네이티브 확대/축소가 원활하도록 뷰포트 및 터치 제스처 스크립트 전면 개선
+            # 📌 2중 스크롤 분리 방지 및 줌(더블탭/마우스/핀치) 기능 통합 템플릿
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -254,14 +254,17 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
-                        touch-action: auto; /* 터치 제스처 허용 */
+                        overflow-x: hidden;
+                        touch-action: manipulation;
                         user-select: text;
                     }}
 
                     #zoom-container {{
+                        transform-origin: 0 0;
                         width: 100%;
                         box-sizing: border-box;
                         padding: 10px;
+                        transition: transform 0.08s ease-out;
                     }}
 
                     .detail-header-label {{
@@ -330,6 +333,124 @@ class DogDripBackend:
                                 if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
                             }}
                         }}, 100);
+                    }});
+
+                    const container = document.getElementById('zoom-container');
+
+                    let scale = 1;
+                    let lastScale = 1;
+                    let pointX = 0, pointY = 0;
+                    let startX = 0, startY = 0;
+                    let isDragging = false;
+                    let hasMoved = false;
+                    let initialDistance = 0;
+                    let lastTapTime = 0;
+                    let lastTapX = 0;
+                    let lastTapY = 0;
+
+                    function updateTransform() {{
+                        scale = Math.min(Math.max(1, scale), 4);
+                        if (scale === 1) {{
+                            pointX = 0;
+                            pointY = 0;
+                        }}
+                        container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
+                    }}
+
+                    function toggleZoom() {{
+                        if (scale > 1.05) {{
+                            scale = 1;
+                        }} else {{
+                            scale = 1.5;
+                        }}
+                        pointX = 0;
+                        pointY = 0;
+                        updateTransform();
+                    }}
+
+                    // 마우스 더블클릭 줌 지원
+                    document.addEventListener('dblclick', (e) => {{
+                        toggleZoom();
+                    }});
+
+                    // 블루투스 마우스 Ctrl + 휠 줌 지원
+                    document.addEventListener('wheel', (e) => {{
+                        if (e.ctrlKey) {{
+                            e.preventDefault();
+                            const delta = e.deltaY < 0 ? 0.1 : -0.1;
+                            scale += delta;
+                            updateTransform();
+                        }}
+                    }}, {{ passive: false }});
+
+                    // 터치 제스처 (핀치 줌 및 더블탭 민감도 향상)
+                    document.addEventListener('touchstart', (e) => {{
+                        hasMoved = false;
+                        if (e.touches.length === 2) {{
+                            initialDistance = Math.hypot(
+                                e.touches[0].pageX - e.touches[1].pageX,
+                                e.touches[0].pageY - e.touches[1].pageY
+                            );
+                        }} else if (e.touches.length === 1 && scale > 1) {{
+                            isDragging = true;
+                            startX = e.touches[0].clientX - pointX;
+                            startY = e.touches[0].clientY - pointY;
+                        }}
+                    }});
+
+                    document.addEventListener('touchmove', (e) => {{
+                        if (e.touches.length === 1) {{
+                            const moveDist = Math.hypot(
+                                e.touches[0].clientX - (startX + pointX),
+                                e.touches[0].clientY - (startY + pointY)
+                            );
+                            if (moveDist > 6) {{
+                                hasMoved = true;
+                            }}
+                        }} else {{
+                            hasMoved = true;
+                        }}
+                        
+                        if (e.touches.length === 2) {{
+                            const currentDistance = Math.hypot(
+                                e.touches[0].pageX - e.touches[1].pageX,
+                                e.touches[0].pageY - e.touches[1].pageY
+                            );
+                            if (initialDistance > 0) {{
+                                scale = lastScale * (currentDistance / initialDistance);
+                                updateTransform();
+                            }}
+                        }} else if (e.touches.length === 1 && isDragging) {{
+                            pointX = e.touches[0].clientX - startX;
+                            pointY = e.touches[0].clientY - startY;
+                            updateTransform();
+                        }}
+                    }}, {{ passive: false }});
+
+                    document.addEventListener('touchend', (e) => {{
+                        if (e.touches.length > 0) return;
+
+                        if (!hasMoved) {{
+                            const now = new Date().getTime();
+                            const touchObj = e.changedTouches[0];
+                            const currentX = touchObj.clientX;
+                            const currentY = touchObj.clientY;
+                            
+                            const timeDiff = now - lastTapTime;
+                            const distDiff = Math.hypot(currentX - lastTapX, currentY - lastTapY);
+
+                            if (timeDiff < 350 && timeDiff > 30 && distDiff < 40) {{
+                                toggleZoom();
+                                lastTapTime = 0;
+                            }} else {{
+                                lastTapTime = now;
+                                lastTapX = currentX;
+                                lastTapY = currentY;
+                            }}
+                        }}
+
+                        lastScale = scale;
+                        isDragging = false;
                     }});
                 </script>
             </body>
@@ -564,10 +685,11 @@ if st.session_state.selected_article:
             fallback_title=st.session_state.get("selected_title", "")
         )
         if detail["success"]:
+            # 📌 스크롤 2중화 현상을 막고 앱 전체 창과 자연스럽게 연동되도록 scrolling=False 설정 복구
             components.html(
                 detail["html"], 
                 height=2500, 
-                scrolling=True
+                scrolling=False
             )
         else:
             st.error(f"오류 발생: {detail['error']}")
