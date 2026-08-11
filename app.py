@@ -154,8 +154,6 @@ class DogDripBackend:
                 final_title = "게시글 상세"
 
             content_el = soup.select_one('div.ed.article-content, div.xe_content, div.read_body, article')
-            
-            # 댓글 셀렉터 강화
             comment_el = soup.select_one('#commentbox, div.comment-list, #cmtPosition, div.comment, #comment, div.xe_comment')
 
             body_html = ""
@@ -164,7 +162,6 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 댓글 파싱
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
@@ -258,8 +255,8 @@ class DogDripBackend:
                         line-height: 1.5;
                         background: #ffffff;
                         overflow-x: hidden;
-                        touch-action: pan-x pan-y;
-                        user-select: none;
+                        touch-action: manipulation;
+                        user-select: text;
                     }}
 
                     #zoom-container {{
@@ -345,9 +342,7 @@ class DogDripBackend:
                     let pointX = 0, pointY = 0;
                     let startX = 0, startY = 0;
                     let isDragging = false;
-                    let hasMoved = false; // 📌 터치 움직임 감지 플래그
                     let initialDistance = 0;
-                    let lastTapTime = 0;
 
                     function updateTransform() {{
                         scale = Math.min(Math.max(1, scale), 4);
@@ -358,25 +353,18 @@ class DogDripBackend:
                         container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                     }}
 
-                    function toggleZoom() {{
-                        if (scale > 1.05) {{
-                            scale = 1;
-                        }} else {{
-                            scale = 1.5;
+                    // 📌 마우스 휠 + Ctrl 조합 (블루투스 마우스/키보드 줌) 지원
+                    document.addEventListener('wheel', (e) => {{
+                        if (e.ctrlKey) {{
+                            e.preventDefault();
+                            const delta = e.deltaY < 0 ? 0.1 : -0.1;
+                            scale += delta;
+                            updateTransform();
                         }}
-                        pointX = 0;
-                        pointY = 0;
-                        updateTransform();
-                    }}
+                    }}, {{ passive: false }});
 
-                    // 📌 더블클릭 이벤트 비활성화 (스크롤 제어 원활)
-                    document.addEventListener('dblclick', (e) => {{
-                        e.preventDefault();
-                    }});
-
+                    // 📌 터치 핀치 줌 지원 (모바일 두 손가락 줌만 정교하게 대응)
                     document.addEventListener('touchstart', (e) => {{
-                        hasMoved = false; // 터치 시작시 이동 플래그 초기화
-                        
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -390,8 +378,6 @@ class DogDripBackend:
                     }});
 
                     document.addEventListener('touchmove', (e) => {{
-                        hasMoved = true; // 터치 중 1px이라도 움직이면 스크롤로 간주하여 더블터치 안 됨
-                        
                         if (e.touches.length === 2) {{
                             const currentDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -409,21 +395,6 @@ class DogDripBackend:
                     }}, {{ passive: false }});
 
                     document.addEventListener('touchend', (e) => {{
-                        if (e.touches.length > 0) return;
-                        
-                        // 📌 손가락이 움직였거나(스크롤) 멀티터치 후 뗀 경우 확대 무시
-                        if (!hasMoved) {{
-                            const now = new Date().getTime();
-                            const timeDiff = now - lastTapTime;
-
-                            // 📌 더블 터치 시간 판정 범위를 180ms 이내 초고속 연타로만 제한
-                            if (timeDiff < 180 && timeDiff > 0) {{
-                                toggleZoom();
-                                e.preventDefault();
-                            }}
-                            lastTapTime = now;
-                        }}
-
                         lastScale = scale;
                         isDragging = false;
                     }});
