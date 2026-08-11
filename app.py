@@ -243,6 +243,17 @@ class DogDripBackend:
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
+                <script>
+                    // 부모 창으로부터 스크롤 수신 명령 대기
+                    window.addEventListener('message', function(e) {{
+                        if (e.data === 'scrollToComment') {{
+                            const cmt = document.getElementById('comment-start-point');
+                            if (cmt) {{
+                                cmt.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                            }}
+                        }}
+                    }});
+                </script>
             </head>
             <body>
                 <div id="article-top-anchor" class="article-title">{title_text}</div>
@@ -347,19 +358,17 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 1, 2, 3번 스크립트 기능 처리
+    # postMessage 통신으로 스크롤 제어하는 플로팅 핫키 스크립트
     components.html("""
     <script>
         const doc = window.parent.document;
         
-        // 1. 기존 플로팅 박스 제거 후 재설정
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
 
         const box = doc.createElement('div');
         box.id = 'custom-floating-box';
         
-        // 2. 투명도 설정 (opacity: 0.45 반투명, 마우스 올려놓거나 누르면 1.0)
         box.style.cssText = `
             position: fixed;
             bottom: 80px;
@@ -397,25 +406,19 @@ if st.session_state.selected_article:
 
         doc.body.appendChild(box);
 
-        // 버튼 액션
-        // ▲ 게시글 상단으로 이동
+        // ▲ 게시글 최상단 이동
         doc.getElementById('float-top').onclick = () => {
             window.parent.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
-        // 💬 댓글 시작점 위치로 이동
+        // 💬 댓글 시작점 위치로 이동 (postMessage로 내부 iframe 전달)
         doc.getElementById('float-cmt').onclick = () => {
             const iframes = doc.querySelectorAll('iframe');
-            for (let iframe of iframes) {
+            iframes.forEach(iframe => {
                 try {
-                    const cmtEl = iframe.contentWindow.document.getElementById('comment-start-point');
-                    if (cmtEl) {
-                        iframe.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        cmtEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        break;
-                    }
+                    iframe.contentWindow.postMessage('scrollToComment', '*');
                 } catch(e) {}
-            }
+            });
         };
 
         // ◀ 이전글 이동
@@ -432,7 +435,7 @@ if st.session_state.selected_article:
             if (target && !target.disabled) target.click();
         };
 
-        // 3. 스마트폰 뒤로가기 버튼 / PC 백스페이스 이벤트 핸들링
+        // 스마트폰 뒤로가기 버튼 / PC 백스페이스 이벤트 핸들링
         if (!window.parent.location.hash.includes('detail')) {
             window.parent.history.pushState({ page: 'detail' }, '', window.parent.location.href + '#detail');
         }
@@ -472,7 +475,6 @@ if st.session_state.selected_article:
 # 게시글 목록 화면
 # ---------------------------------------------------------
 else:
-    # 목록 화면으로 전환되면 플로팅 박스 및 히스토리 정리
     components.html("""
     <script>
         const doc = window.parent.document;
