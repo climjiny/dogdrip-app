@@ -181,6 +181,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
+            # 📌 [요청 반영] "게시글 상세" 아래, 본문 시작점 바로 위에 제목 배치
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -196,6 +197,22 @@ class DogDripBackend:
                         color: #1e293b;
                         line-height: 1.5;
                         background: #ffffff;
+                    }}
+                    .detail-header-label {{
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: #64748b;
+                        margin-bottom: 4px;
+                    }}
+                    .article-title-box {{
+                        font-size: 18px;
+                        font-weight: 800;
+                        color: #0f172a;
+                        margin-bottom: 16px;
+                        padding-bottom: 10px;
+                        border-bottom: 2px solid #e2e8f0;
+                        word-break: keep-all;
+                        line-height: 1.4;
                     }}
                     img, video {{
                         max-width: 100% !important;
@@ -237,6 +254,8 @@ class DogDripBackend:
                 </style>
             </head>
             <body>
+                <div class="detail-header-label">게시글 상세</div>
+                <div class="article-title-box">{title_text}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
@@ -262,8 +281,6 @@ if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
     st.session_state.selected_article = url_article
-if "selected_title" not in st.session_state:
-    st.session_state.selected_title = ""
 if "search_keyword" not in st.session_state:
     st.session_state.search_keyword = ""
 if "current_articles" not in st.session_state:
@@ -277,23 +294,7 @@ if not st.session_state.current_articles:
 
 # 최상단 이동용 앵커
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
-
-# 1. 앱 최상단 타이틀
 st.title("🐶 개드립 모바일 열람기")
-
-# 2. 📌 [요청 반영] 타이틀 바로 아래에 게시글 제목 표시 (상세 페이지일 때)
-if st.session_state.selected_article:
-    current_links = [art["link"] for art in st.session_state.current_articles]
-    current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
-    if not st.session_state.selected_title and current_idx >= 0:
-        st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
-
-    if st.session_state.selected_title:
-        st.markdown(f"""
-        <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #e2e8f0; border-left: 5px solid #1e40af;">
-            <h3 style="margin:0; font-size: 17px; color: #0f172a; word-break: keep-all; line-height: 1.4;">{st.session_state.selected_title}</h3>
-        </div>
-        """, unsafe_allow_html=True)
 
 # 상단 컨트롤 바
 col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
@@ -303,7 +304,6 @@ with col_home:
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
-        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -320,7 +320,6 @@ with col_btn1:
         st.session_state.search_keyword = keyword_input
         st.session_state.page = 1
         st.session_state.selected_article = None
-        st.session_state.selected_title = ""
         st.query_params.clear()
         st.rerun()
 
@@ -347,7 +346,6 @@ if st.session_state.selected_article:
         btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
         if btn_back:
             st.session_state.selected_article = None
-            st.session_state.selected_title = ""
             st.query_params.clear()
             st.rerun()
             
@@ -356,14 +354,12 @@ if st.session_state.selected_article:
         if btn_prev:
             if current_idx > 0:
                 st.session_state.selected_article = current_links[current_idx - 1]
-                st.session_state.selected_title = st.session_state.current_articles[current_idx - 1]["title"]
             elif st.session_state.page > 1:
                 st.session_state.page -= 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][-1]["link"]
-                    st.session_state.selected_title = res["articles"][-1]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -372,14 +368,12 @@ if st.session_state.selected_article:
         if btn_next:
             if current_idx >= 0 and current_idx < len(current_links) - 1:
                 st.session_state.selected_article = current_links[current_idx + 1]
-                st.session_state.selected_title = st.session_state.current_articles[current_idx + 1]["title"]
             else:
                 st.session_state.page += 1
                 res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
                 if res["success"] and res["articles"]:
                     st.session_state.current_articles = res["articles"]
                     st.session_state.selected_article = res["articles"][0]["link"]
-                    st.session_state.selected_title = res["articles"][0]["title"]
             st.query_params["article"] = st.session_state.selected_article
             st.rerun()
 
@@ -393,13 +387,12 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 📌 플로팅 버튼 및 스마트폰 뒤로가기 완벽 제어
+    # 📌 플로팅 버튼 및 스마트폰 뒤로가기 제어
     components.html("""
     <script>
         const doc = window.parent.document;
         const topWin = window.top;
 
-        // 기존 플로팅 버튼 박스 제거 및 재생성
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
 
@@ -462,7 +455,7 @@ if st.session_state.selected_article:
             if (target && !target.disabled) target.click();
         };
 
-        // --- 📱 스마트폰 뒤로가기 완전 해결 스크립트 ---
+        // --- 📱 스마트폰 뒤로가기 스크립트 ---
         if (!topWin.history.state || topWin.history.state.mode !== 'detail') {
             topWin.history.pushState({ mode: 'detail' }, '', topWin.location.href);
         }
@@ -504,7 +497,6 @@ else:
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
         
-        // 목록 화면 진입 시 뒤로가기 핸들러 해제
         topWin.onpopstate = null;
     </script>
     """, height=0)
@@ -521,7 +513,6 @@ else:
         for art in res["articles"]:
             if st.button(art["title"], key=art["link"], use_container_width=True):
                 st.session_state.selected_article = art["link"]
-                st.session_state.selected_title = art["title"]
                 st.query_params["article"] = art["link"]
                 st.rerun()
 
