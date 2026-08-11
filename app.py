@@ -186,7 +186,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 게시물 화면 직접 확대/축소 스크립트 적용
+            # 📌 마우스 더블클릭 & Ctrl+마우스 휠 확대/축소 내장
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -204,9 +204,9 @@ class DogDripBackend:
                         background: #ffffff;
                         overflow-x: hidden;
                         touch-action: pan-x pan-y;
+                        user-select: none;
                     }}
 
-                    /* 전체 확대 컨테이너 */
                     #zoom-container {{
                         transform-origin: 0 0;
                         width: 100%;
@@ -289,7 +289,7 @@ class DogDripBackend:
                     let lastTapTime = 0;
 
                     function updateTransform() {{
-                        // 최소 축소 배율 1.0 (원본 크기) 제한, 최대 4.0
+                        // 최소 원본 배율(1.0) 제한, 최대 4.0배
                         scale = Math.min(Math.max(1, scale), 4);
                         if (scale === 1) {{
                             pointX = 0;
@@ -298,7 +298,35 @@ class DogDripBackend:
                         container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                     }}
 
-                    // 더블탭 이벤트 (150% 확대 <-> 100% 원본 복원)
+                    function toggleZoom() {{
+                        if (scale > 1.05) {{
+                            scale = 1;
+                        }} else {{
+                            scale = 1.5; // 150% 확대
+                        }}
+                        pointX = 0;
+                        pointY = 0;
+                        updateTransform();
+                    }}
+
+                    // 🖱️ 마우스 더블클릭 이벤트 지원
+                    document.addEventListener('dblclick', (e) => {{
+                        e.preventDefault();
+                        toggleZoom();
+                    }});
+
+                    // ⌨️+🖱️ Ctrl + 마우스 휠 확대/축소 지원
+                    document.addEventListener('wheel', (e) => {{
+                        if (e.ctrlKey) {{
+                            e.preventDefault();
+                            // 휠 방향에 따른 배율 계산
+                            const delta = e.deltaY < 0 ? 0.15 : -0.15;
+                            scale += delta;
+                            updateTransform();
+                        }}
+                    }}, {{ passive: false }});
+
+                    // 📱 모바일 더블탭 이벤트
                     document.addEventListener('touchend', (e) => {{
                         if (e.touches.length > 0) return;
                         
@@ -306,20 +334,13 @@ class DogDripBackend:
                         const timeDiff = now - lastTapTime;
 
                         if (timeDiff < 300 && timeDiff > 0) {{
-                            if (scale > 1.05) {{
-                                scale = 1;
-                            }} else {{
-                                scale = 1.5; // 150% 확대
-                            }}
-                            pointX = 0;
-                            pointY = 0;
-                            updateTransform();
+                            toggleZoom();
                             e.preventDefault();
                         }}
                         lastTapTime = now;
                     }});
 
-                    // 손가락 2개 터치(핀치 줌) 및 손가락 1개 드래그 이동
+                    // 🤌 손가락 2개 터치(핀치 줌) 및 드래그
                     document.addEventListener('touchstart', (e) => {{
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
