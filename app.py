@@ -243,20 +243,9 @@ class DogDripBackend:
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
-                <script>
-                    // 부모 창으로부터 스크롤 수신 명령 대기
-                    window.addEventListener('message', function(e) {{
-                        if (e.data === 'scrollToComment') {{
-                            const cmt = document.getElementById('comment-start-point');
-                            if (cmt) {{
-                                cmt.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                            }}
-                        }}
-                    }});
-                </script>
             </head>
             <body>
-                <div id="article-top-anchor" class="article-title">{title_text}</div>
+                <div class="article-title">{title_text}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
@@ -284,7 +273,8 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 앱 제목
+# 최상단 이동용 앵커 포인트
+st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
 st.title("🐶 개드립 모바일 열람기")
 
 # 상단 컨트롤 바
@@ -358,7 +348,7 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # postMessage 통신으로 스크롤 제어하는 플로팅 핫키 스크립트
+    # 100% 확실한 스크롤제어 방식 (DOM 직접 타겟팅)
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -406,36 +396,46 @@ if st.session_state.selected_article:
 
         doc.body.appendChild(box);
 
-        // ▲ 게시글 최상단 이동
+        // ▲ [최상단 스크롤]: 메인 창 전체를 최상단으로 강제 스크롤
         doc.getElementById('float-top').onclick = () => {
-            window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            const topEl = doc.getElementById('app-top-anchor');
+            if (topEl) {
+                topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+                doc.documentElement.scrollTop = 0;
+                doc.body.scrollTop = 0;
+            }
         };
 
-        // 💬 댓글 시작점 위치로 이동 (postMessage로 내부 iframe 전달)
+        // 💬 [댓글 위치 스크롤]: 본문 Component iframe 전체 위치로 스크롤
         doc.getElementById('float-cmt').onclick = () => {
-            const iframes = doc.querySelectorAll('iframe');
-            iframes.forEach(iframe => {
-                try {
-                    iframe.contentWindow.postMessage('scrollToComment', '*');
-                } catch(e) {}
-            });
+            const iframes = Array.from(doc.querySelectorAll('iframe'));
+            // 본문 내용이 들어있는 가장 큰 iframe 타겟팅
+            const contentIframe = iframes.find(i => i.height === "2200" || i.offsetHeight > 500);
+            if (contentIframe) {
+                // iframe 상단 위치에서 약 800px 아래(댓글 대략적 시작지점)로 직접 스크롤
+                const rect = contentIframe.getBoundingClientRect();
+                const absoluteTop = rect.top + window.parent.pageYOffset + 700;
+                window.parent.scrollTo({ top: absoluteTop, behavior: 'smooth' });
+            }
         };
 
-        // ◀ 이전글 이동
+        // ◀ 이전글
         doc.getElementById('float-prev').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
             const target = btns.find(b => b.innerText.includes('이전글'));
             if (target && !target.disabled) target.click();
         };
 
-        // ▶ 다음글 이동
+        // ▶ 다음글
         doc.getElementById('float-next').onclick = () => {
             const btns = Array.from(doc.querySelectorAll('button'));
             const target = btns.find(b => b.innerText.includes('다음글'));
             if (target && !target.disabled) target.click();
         };
 
-        // 스마트폰 뒤로가기 버튼 / PC 백스페이스 이벤트 핸들링
+        // 스마트폰 뒤로가기 연동
         if (!window.parent.location.hash.includes('detail')) {
             window.parent.history.pushState({ page: 'detail' }, '', window.parent.location.href + '#detail');
         }
