@@ -186,7 +186,6 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 마우스 더블클릭 & Ctrl+마우스 휠 확대/축소 내장
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -244,29 +243,68 @@ class DogDripBackend:
                         min-height: 250px;
                         border: none;
                     }}
+                    
+                    /* 📌 댓글 영역 스타일 최적화 (요청 사항 반영) */
                     .comment-section-box {{
-                        margin-top: 15px;
+                        margin-top: 20px;
                         padding-top: 10px;
-                        border-top: 2px dashed #cbd5e1;
+                        border-top: 2px dashed #e2e8f0;
                     }}
                     .comment-section-header {{
                         font-size: 15px;
                         font-weight: 800;
                         color: #1e40af;
-                        margin-bottom: 8px;
+                        margin-bottom: 10px;
                     }}
-                    .comment-item, div[id^="comment_"] {{
-                        padding: 4px 8px !important;
+                    
+                    /* 댓글 단일 항목 카드 */
+                    .comment-item, div[id^="comment_"], .comment-doc {{
+                        padding: 8px 12px !important;
+                        margin-bottom: 6px !important;
+                        border-radius: 6px !important;
+                        background: #f8fafc !important;
+                        border: 1px solid #f1f5f9 !important;
+                        font-size: 13.5px !important;
+                        line-height: 1.4 !important;
+                    }}
+
+                    /* 댓글 작성자 헤더 영역: 가로 정렬 (닉네임 + 시간) */
+                    .comment-item .meta, div[id^="comment_"] .header, .cmt_header {{
+                        display: flex !important;
+                        align-items: center !important;
+                        gap: 8px !important;
                         margin-bottom: 4px !important;
-                        border: 1px solid #f1f5f9;
-                        border-radius: 4px;
-                        background: #f8fafc;
-                        font-size: 12.5px !important;
-                        line-height: 1.3 !important;
+                        font-size: 12px !important;
                     }}
-                    .vote, .voted_count, .vote_area, .vote-count {{
+
+                    /* 작성자 닉네임 / 레벨 아이콘 */
+                    .comment-item .author, div[id^="comment_"] .member_srl, .cmt_author {{
+                        font-weight: 700 !important;
+                        color: #2563eb !important;
+                        display: inline-flex !important;
+                        align-items: center !important;
+                        gap: 4px !important;
+                    }}
+
+                    /* 작성 시간 */
+                    .comment-item .date, div[id^="comment_"] .date, .cmt_date, span.time {{
+                        color: #64748b !important;
+                        font-size: 12px !important;
+                        font-weight: 500 !important;
+                    }}
+
+                    /* 본문 텍스트 */
+                    .comment-item .xe_content, div[id^="comment_"] .xe_content, .cmt_body {{
+                        margin-top: 2px !important;
+                        color: #0f172a !important;
+                        font-size: 13.5px !important;
+                    }}
+
+                    /* 불필요한 추천 수 및 서식 숨김 */
+                    .vote, .voted_count, .vote_area, .vote-count, .action {{
                         display: none !important;
                     }}
+
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
             </head>
@@ -289,7 +327,6 @@ class DogDripBackend:
                     let lastTapTime = 0;
 
                     function updateTransform() {{
-                        // 최소 원본 배율(1.0) 제한, 최대 4.0배
                         scale = Math.min(Math.max(1, scale), 4);
                         if (scale === 1) {{
                             pointX = 0;
@@ -302,31 +339,27 @@ class DogDripBackend:
                         if (scale > 1.05) {{
                             scale = 1;
                         }} else {{
-                            scale = 1.5; // 150% 확대
+                            scale = 1.5;
                         }}
                         pointX = 0;
                         pointY = 0;
                         updateTransform();
                     }}
 
-                    // 🖱️ 마우스 더블클릭 이벤트 지원
                     document.addEventListener('dblclick', (e) => {{
                         e.preventDefault();
                         toggleZoom();
                     }});
 
-                    // ⌨️+🖱️ Ctrl + 마우스 휠 확대/축소 지원
                     document.addEventListener('wheel', (e) => {{
                         if (e.ctrlKey) {{
                             e.preventDefault();
-                            // 휠 방향에 따른 배율 계산
                             const delta = e.deltaY < 0 ? 0.15 : -0.15;
                             scale += delta;
                             updateTransform();
                         }}
                     }}, {{ passive: false }});
 
-                    // 📱 모바일 더블탭 이벤트
                     document.addEventListener('touchend', (e) => {{
                         if (e.touches.length > 0) return;
                         
@@ -340,7 +373,6 @@ class DogDripBackend:
                         lastTapTime = now;
                     }});
 
-                    // 🤌 손가락 2개 터치(핀치 줌) 및 드래그
                     document.addEventListener('touchstart', (e) => {{
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
