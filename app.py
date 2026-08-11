@@ -141,11 +141,9 @@ class DogDripBackend:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
             if comment_el:
-                for unneeded in comment_el.select('form, .comment-editor, .btn-area, .rhymix_comment_editor, .vote, .voted_count, .vote_area'):
+                # 불필요 요소 즉시제거
+                for unneeded in comment_el.select('form, .comment-editor, .btn-area, .rhymix_comment_editor, .vote, .voted_count, .vote_area, .vote-count, .number, .num, .action'):
                     unneeded.decompose()
-
-                for el in comment_el.select('.number, .num, .vote-count, .vote'):
-                    el.decompose()
 
                 body_html += f"""
                 <div class='comment-section-box'>
@@ -156,6 +154,7 @@ class DogDripBackend:
 
             temp_soup = BeautifulSoup(body_html, 'html.parser')
 
+            # 📌 이미지, 비디오, 링크 상대경로 -> 절대경로 보정
             for tag in temp_soup.select('img, video, source, a, iframe'):
                 for attr in ['src', 'poster', 'data-src', 'href']:
                     if tag.has_attr(attr):
@@ -244,7 +243,7 @@ class DogDripBackend:
                         border: none;
                     }}
                     
-                    /* 📌 댓글 영역 스타일 최적화 (요청 사항 반영) */
+                    /* 📌 댓글 영역 강력 변경 CSS */
                     .comment-section-box {{
                         margin-top: 20px;
                         padding-top: 10px;
@@ -257,51 +256,64 @@ class DogDripBackend:
                         margin-bottom: 10px;
                     }}
                     
-                    /* 댓글 단일 항목 카드 */
-                    .comment-item, div[id^="comment_"], .comment-doc {{
-                        padding: 8px 12px !important;
-                        margin-bottom: 6px !important;
+                    /* 개드립 원본 댓글 개별 컨테이너 */
+                    div[id^="comment_"], .comment-item, .comment-doc, div.comment-content {{
+                        padding: 10px 14px !important;
+                        margin-bottom: 8px !important;
                         border-radius: 6px !important;
                         background: #f8fafc !important;
                         border: 1px solid #f1f5f9 !important;
-                        font-size: 13.5px !important;
+                        font-size: 14px !important;
                         line-height: 1.4 !important;
-                    }}
-
-                    /* 댓글 작성자 헤더 영역: 가로 정렬 (닉네임 + 시간) */
-                    .comment-item .meta, div[id^="comment_"] .header, .cmt_header {{
                         display: flex !important;
-                        align-items: center !important;
-                        gap: 8px !important;
-                        margin-bottom: 4px !important;
-                        font-size: 12px !important;
+                        flex-direction: column !important;
                     }}
 
-                    /* 작성자 닉네임 / 레벨 아이콘 */
-                    .comment-item .author, div[id^="comment_"] .member_srl, .cmt_author {{
+                    /* 댓글 헤더 (닉네임 + 작성 시간 가로 배치 강제) */
+                    div[id^="comment_"] > div:first-child, 
+                    .comment-item .meta, 
+                    .comment-doc .meta, 
+                    .comment-header,
+                    div.ed.flex.flex-wrap {{
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: flex-start !important;
+                        gap: 10px !important;
+                        margin-bottom: 6px !important;
+                        width: 100% !important;
+                    }}
+
+                    /* 작성자 닉네임 */
+                    .author, .member_srl, a[class*="member_"], span[class*="member_"] {{
                         font-weight: 700 !important;
                         color: #2563eb !important;
                         display: inline-flex !important;
                         align-items: center !important;
                         gap: 4px !important;
+                        margin: 0 !important;
                     }}
 
-                    /* 작성 시간 */
-                    .comment-item .date, div[id^="comment_"] .date, .cmt_date, span.time {{
+                    /* 작성 시간 (19분 전) */
+                    .date, span.time, .date-time, div[id^="comment_"] time {{
                         color: #64748b !important;
-                        font-size: 12px !important;
+                        font-size: 12.5px !important;
                         font-weight: 500 !important;
+                        display: inline-block !important;
+                        margin: 0 !important;
                     }}
 
-                    /* 본문 텍스트 */
-                    .comment-item .xe_content, div[id^="comment_"] .xe_content, .cmt_body {{
-                        margin-top: 2px !important;
+                    /* 댓글 본문 */
+                    .xe_content, .comment-body, div[id^="comment_"] .ed {{
+                        margin-top: 4px !important;
                         color: #0f172a !important;
-                        font-size: 13.5px !important;
+                        font-size: 14px !important;
+                        display: block !important;
+                        width: 100% !important;
                     }}
 
-                    /* 불필요한 추천 수 및 서식 숨김 */
-                    .vote, .voted_count, .vote_area, .vote-count, .action {{
+                    /* 추천 수 / 비추천 / 답글 버튼 숨김 */
+                    .vote, .voted_count, .vote_area, .vote-count, .action, .number, .num, div[class*="vote"] {{
                         display: none !important;
                     }}
 
@@ -325,6 +337,34 @@ class DogDripBackend:
                     let isDragging = false;
                     let initialDistance = 0;
                     let lastTapTime = 0;
+
+                    // 📌 JS로 개드립 댓글 DOM 구조를 강제로 요청하신 모양으로 재조립
+                    function restructureComments() {{
+                        const comments = document.querySelectorAll('div[id^="comment_"]');
+                        comments.forEach(cmt => {{
+                            const authorEl = cmt.querySelector('.author, .member_srl, a[class*="member_"], span[class*="member_"]');
+                            const dateEl = cmt.querySelector('.date, span.time, time');
+                            const contentEl = cmt.querySelector('.xe_content');
+
+                            if (authorEl && dateEl && contentEl) {{
+                                // 기존 요소 제거 후 변경된 구조로 덮어쓰기
+                                const authorHtml = authorEl.outerHTML;
+                                const dateText = dateEl.innerText || dateEl.textContent;
+                                const contentHtml = contentEl.outerHTML;
+
+                                cmt.innerHTML = `
+                                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                                        ${{authorHtml}}
+                                        <span style="color:#64748b; font-size:12.5px; font-weight:500;">${{dateText}}</span>
+                                    </div>
+                                    <div style="margin-top:2px;">${{contentHtml}}</div>
+                                `;
+                            }}
+                        }});
+                    }}
+
+                    window.addEventListener('DOMContentLoaded', restructureComments);
+                    setTimeout(restructureComments, 300); // 렌더링 지연 대비 2차 실행
 
                     function updateTransform() {{
                         scale = Math.min(Math.max(1, scale), 4);
