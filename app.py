@@ -124,7 +124,7 @@ class DogDripBackend:
 
             soup = BeautifulSoup(res.text, 'html.parser')
             
-            # 파싱으로 제목 가져오기, 실패 시 전달받은 목록 제목 사용
+            # 파싱으로 제목 가져오기
             title_el = soup.select_one('h1.ed.title, div.document_title, h1.ed, h1, a.title')
             parsed_title = title_el.get_text(strip=True) if title_el else ""
             
@@ -187,8 +187,8 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 [요청 반영 1] viewport에 화면 확대(확대 제스처/더블탭) 허용 설정
-            # 📌 [요청 반영 2] '게시글 상세' 글자 바로 밑에 크고 명확하게 제목 배치
+            # 📌 viewport에 화면 확대(더블탭/핀치 줌) 허용 설정
+            # 📌 '게시글 상세' 밑에 크고 선명하게 제목 배치
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -275,11 +275,8 @@ class DogDripBackend:
 # ---------------------------------------------------------
 # Streamlit UI & 세션 상태 복원
 # ---------------------------------------------------------
-@st.cache_resource
-def get_backend():
-    return DogDripBackend()
-
-backend = get_backend()
+# 캐시 에러 방지를 위해 객체를 직접 생성
+backend = DogDripBackend()
 
 # URL 쿼리 파라미터 파싱
 query_params = st.query_params
@@ -494,9 +491,10 @@ if st.session_state.selected_article:
     st.divider()
 
     with st.spinner("본문 및 댓글 로딩 중..."):
+        # 안전한 호출방식 적용
         detail = backend.fetch_article_detail(
             st.session_state.selected_article, 
-            fallback_title=st.session_state.selected_title
+            fallback_title=st.session_state.get("selected_title", "")
         )
         if detail["success"]:
             components.html(
