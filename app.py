@@ -153,7 +153,7 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 📌 댓글 중복 방지 로직 (고유 ID 및 텍스트 지문 대조)
+            # 댓글 중복 방지 로직 (고유 ID 및 텍스트 지문 대조)
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
@@ -237,7 +237,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 짤림 방지 및 더블탭 조건 적용 (1초 이내 2회 터치, 2초 딜레이 보호)
+            # 📌 터치 지점 / 마우스 커서 기준 확대(transform-origin) 적용 스크립트
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -357,25 +357,29 @@ class DogDripBackend:
                         container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                     }}
 
-                    function toggleZoom() {{
+                    function toggleZoomAt(clientX, clientY) {{
                         const now = new Date().getTime();
                         if (now < zoomLockUntil) return; // 2초 딜레이 보호
 
                         if (scale > 1.05) {{
                             scale = 1;
+                            pointX = 0;
+                            pointY = 0;
                         }} else {{
                             scale = 1.5;
+                            // 터치/마우스 커서 지점을 중심으로 확대되도록 위치 보정 계산
+                            const rect = container.getBoundingClientRect();
+                            const x = clientX - rect.left;
+                            const y = clientY - rect.top;
+                            pointX = x - x * scale;
+                            pointY = y - y * scale;
                         }}
-                        pointX = 0;
-                        pointY = 0;
                         updateTransform();
-                        
-                        // 확대/축소 직후 2초(2000ms)동안 연속 오작동 방지 딜레이 설정
-                        zoomLockUntil = now + 2000;
+                        zoomLockUntil = now + 2000; // 확대/축소 직후 2초간 연속 오작동 방지
                     }}
 
                     document.addEventListener('dblclick', (e) => {{
-                        toggleZoom();
+                        toggleZoomAt(e.clientX, e.clientY);
                     }});
 
                     document.addEventListener('wheel', (e) => {{
@@ -444,9 +448,9 @@ class DogDripBackend:
                         const timeDiff = now - lastTapTime;
                         const distDiff = Math.hypot(currentX - lastTapX, currentY - lastTapY);
 
-                        // 📌 1초(1000ms) 안에 2번 터치 시 감지, 이동 오차 80px 허용
+                        // 📌 1초(1000ms) 이내 2회 터치 시 감지 (마지막 탭한 위치 기준 확대)
                         if (timeDiff < 1000 && timeDiff > 30 && distDiff < 80) {{
-                            toggleZoom();
+                            toggleZoomAt(currentX, currentY);
                             lastTapTime = 0;
                         }} else {{
                             lastTapTime = now;
