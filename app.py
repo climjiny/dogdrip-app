@@ -155,7 +155,7 @@ class DogDripBackend:
 
             content_el = soup.select_one('div.ed.article-content, div.xe_content, div.read_body, article')
             
-            # 📌 2번 수정사항: 다양한 댓글 영역 셀렉터 추가 (댓글누락 완벽 방지)
+            # 댓글 셀렉터 강화
             comment_el = soup.select_one('#commentbox, div.comment-list, #cmtPosition, div.comment, #comment, div.xe_comment')
 
             body_html = ""
@@ -164,14 +164,13 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 댓글 영역 처리
+            # 댓글 파싱
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
 
                 rebuilt_comments_html = f"<div class='comment-section-box'><h3 class='comment-section-header'>💬 {cmt_count_text}</h3>"
 
-                # 댓글 항목 추출 패턴 보강
                 cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content, li[id^="comment_"]')
                 if not cmt_items:
                     cmt_items = comment_el.select('li, div.item')
@@ -243,7 +242,6 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 1번 수정사항: #article-title-target 앵커 추가 + 진입 즉시 제목 위치로 자동 스크롤
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -330,7 +328,6 @@ class DogDripBackend:
                 </div>
 
                 <script>
-                    // 📌 진입시 상단 제목 위치로 자동 스크롤
                     window.addEventListener('load', () => {{
                         setTimeout(() => {{
                             window.scrollTo({{ top: 0, behavior: 'smooth' }});
@@ -348,6 +345,7 @@ class DogDripBackend:
                     let pointX = 0, pointY = 0;
                     let startX = 0, startY = 0;
                     let isDragging = false;
+                    let hasMoved = false; // 📌 터치 움직임 감지 플래그
                     let initialDistance = 0;
                     let lastTapTime = 0;
 
@@ -371,34 +369,14 @@ class DogDripBackend:
                         updateTransform();
                     }}
 
+                    // 📌 더블클릭 이벤트 비활성화 (스크롤 제어 원활)
                     document.addEventListener('dblclick', (e) => {{
                         e.preventDefault();
-                        toggleZoom();
-                    }});
-
-                    document.addEventListener('wheel', (e) => {{
-                        if (e.ctrlKey) {{
-                            e.preventDefault();
-                            const delta = e.deltaY < 0 ? 0.15 : -0.15;
-                            scale += delta;
-                            updateTransform();
-                        }}
-                    }}, {{ passive: false }});
-
-                    document.addEventListener('touchend', (e) => {{
-                        if (e.touches.length > 0) return;
-                        
-                        const now = new Date().getTime();
-                        const timeDiff = now - lastTapTime;
-
-                        if (timeDiff < 300 && timeDiff > 0) {{
-                            toggleZoom();
-                            e.preventDefault();
-                        }}
-                        lastTapTime = now;
                     }});
 
                     document.addEventListener('touchstart', (e) => {{
+                        hasMoved = false; // 터치 시작시 이동 플래그 초기화
+                        
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -412,6 +390,8 @@ class DogDripBackend:
                     }});
 
                     document.addEventListener('touchmove', (e) => {{
+                        hasMoved = true; // 터치 중 1px이라도 움직이면 스크롤로 간주하여 더블터치 안 됨
+                        
                         if (e.touches.length === 2) {{
                             const currentDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -429,6 +409,21 @@ class DogDripBackend:
                     }}, {{ passive: false }});
 
                     document.addEventListener('touchend', (e) => {{
+                        if (e.touches.length > 0) return;
+                        
+                        // 📌 손가락이 움직였거나(스크롤) 멀티터치 후 뗀 경우 확대 무시
+                        if (!hasMoved) {{
+                            const now = new Date().getTime();
+                            const timeDiff = now - lastTapTime;
+
+                            // 📌 더블 터치 시간 판정 범위를 180ms 이내 초고속 연타로만 제한
+                            if (timeDiff < 180 && timeDiff > 0) {{
+                                toggleZoom();
+                                e.preventDefault();
+                            }}
+                            lastTapTime = now;
+                        }}
+
                         lastScale = scale;
                         isDragging = false;
                     }});
@@ -557,7 +552,6 @@ if st.session_state.selected_article:
     if current_idx >= 0 and not st.session_state.selected_title:
         st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
 
-    # 📌 진입시 제목 위치 앵커 삽입 및 스크롤 이벤트 발생
     st.markdown("<div id='article-title-target' style='scroll-margin-top: 10px;'></div>", unsafe_allow_html=True)
 
     components.html("""
@@ -565,7 +559,6 @@ if st.session_state.selected_article:
         const doc = window.parent.document;
         const topWin = window.top;
 
-        // 게시물 진입 시 부모 창 스크롤을 제목 위치로 이동
         const titleTarget = doc.getElementById('article-title-target');
         if (titleTarget) {
             titleTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
