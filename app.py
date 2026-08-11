@@ -237,7 +237,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 짤림 방지 및 더블탭 민감도 완화(오차 범위 확장) 적용
+            # 📌 짤림 방지 및 더블탭 속도(시간 간격) 완화 적용
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -435,8 +435,8 @@ class DogDripBackend:
                         const timeDiff = now - lastTapTime;
                         const distDiff = Math.hypot(currentX - lastTapX, currentY - lastTapY);
 
-                        // 📌 더블탭 민감도 완화: 약간의 스크롤이나 움직임(80px 이하)이 있어도 더블탭으로 인정
-                        if (timeDiff < 400 && timeDiff > 30 && distDiff < 80) {{
+                        // 📌 더블탭 속도 완화: 시간 간격을 600ms로 늘려 천천히 탭해도 인식되도록 수정
+                        if (timeDiff < 600 && timeDiff > 30 && distDiff < 80) {{
                             toggleZoom();
                             lastTapTime = 0;
                         }} else {{
