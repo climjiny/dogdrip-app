@@ -237,7 +237,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 짤림 방지 및 더블탭 속도(시간 간격) 완화 적용
+            # 📌 짤림 방지 및 더블탭 조건 적용 (1초 이내 2회 터치, 2초 딜레이 보호)
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -346,6 +346,7 @@ class DogDripBackend:
                     let lastTapTime = 0;
                     let lastTapX = 0;
                     let lastTapY = 0;
+                    let zoomLockUntil = 0;
 
                     function updateTransform() {{
                         scale = Math.min(Math.max(1, scale), 4);
@@ -357,6 +358,9 @@ class DogDripBackend:
                     }}
 
                     function toggleZoom() {{
+                        const now = new Date().getTime();
+                        if (now < zoomLockUntil) return; // 2초 딜레이 보호
+
                         if (scale > 1.05) {{
                             scale = 1;
                         }} else {{
@@ -365,6 +369,9 @@ class DogDripBackend:
                         pointX = 0;
                         pointY = 0;
                         updateTransform();
+                        
+                        // 확대/축소 직후 2초(2000ms)동안 연속 오작동 방지 딜레이 설정
+                        zoomLockUntil = now + 2000;
                     }}
 
                     document.addEventListener('dblclick', (e) => {{
@@ -428,6 +435,8 @@ class DogDripBackend:
                         if (e.touches.length > 0) return;
 
                         const now = new Date().getTime();
+                        if (now < zoomLockUntil) return;
+
                         const touchObj = e.changedTouches[0];
                         const currentX = touchObj.clientX;
                         const currentY = touchObj.clientY;
@@ -435,8 +444,8 @@ class DogDripBackend:
                         const timeDiff = now - lastTapTime;
                         const distDiff = Math.hypot(currentX - lastTapX, currentY - lastTapY);
 
-                        // 📌 더블탭 속도 완화: 시간 간격을 600ms로 늘려 천천히 탭해도 인식되도록 수정
-                        if (timeDiff < 600 && timeDiff > 30 && distDiff < 80) {{
+                        // 📌 1초(1000ms) 안에 2번 터치 시 감지, 이동 오차 80px 허용
+                        if (timeDiff < 1000 && timeDiff > 30 && distDiff < 80) {{
                             toggleZoom();
                             lastTapTime = 0;
                         }} else {{
