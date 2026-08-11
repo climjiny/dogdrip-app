@@ -216,6 +216,11 @@ class DogDripBackend:
                         elif val.startswith('/'):
                             tag[attr] = 'https://www.dogdrip.net' + val
 
+            # 📌 이미지(img)를 감싸고 있는 링크(a 태그) 제거 및 이미지 새창 열기 방지 처리
+            for a in temp_soup.select('a'):
+                if a.select('img'):
+                    a.unwrap() # 링크 태그만 벗겨내어 이미지 클릭 시 새창이 뜨지 않도록 방지
+
             for v in temp_soup.select('video'):
                 v['controls'] = ''
                 v['autoplay'] = ''
@@ -237,7 +242,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 터치 지점 / 마우스 커서 기준 확대(transform-origin) 적용 스크립트
+            # 📌 이미지 클릭/터치 기본 동작 차단 및 커서/터치 중심 확대 스크립트 적용
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -288,6 +293,7 @@ class DogDripBackend:
                         display: block;
                         margin: 10px auto;
                         border-radius: 8px;
+                        pointer-events: auto; /* 터치 이벤트는 받되 링크 기능은 제거됨 */
                     }}
                     .comment-section-box img {{
                         display: inline-block !important;
@@ -367,7 +373,6 @@ class DogDripBackend:
                             pointY = 0;
                         }} else {{
                             scale = 1.5;
-                            // 터치/마우스 커서 지점을 중심으로 확대되도록 위치 보정 계산
                             const rect = container.getBoundingClientRect();
                             const x = clientX - rect.left;
                             const y = clientY - rect.top;
@@ -375,7 +380,7 @@ class DogDripBackend:
                             pointY = y - y * scale;
                         }}
                         updateTransform();
-                        zoomLockUntil = now + 2000; // 확대/축소 직후 2초간 연속 오작동 방지
+                        zoomLockUntil = now + 2000;
                     }}
 
                     document.addEventListener('dblclick', (e) => {{
@@ -448,7 +453,6 @@ class DogDripBackend:
                         const timeDiff = now - lastTapTime;
                         const distDiff = Math.hypot(currentX - lastTapX, currentY - lastTapY);
 
-                        // 📌 1초(1000ms) 이내 2회 터치 시 감지 (마지막 탭한 위치 기준 확대)
                         if (timeDiff < 1000 && timeDiff > 30 && distDiff < 80) {{
                             toggleZoomAt(currentX, currentY);
                             lastTapTime = 0;
