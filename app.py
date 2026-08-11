@@ -264,7 +264,7 @@ class DogDripBackend:
                         width: 100%;
                         box-sizing: border-box;
                         padding: 10px;
-                        transition: transform 0.05s linear;
+                        transition: transform 0.1s ease-out;
                     }}
 
                     .detail-header-label {{
@@ -342,7 +342,9 @@ class DogDripBackend:
                     let pointX = 0, pointY = 0;
                     let startX = 0, startY = 0;
                     let isDragging = false;
+                    let hasMoved = false;
                     let initialDistance = 0;
+                    let lastTapTime = 0;
 
                     function updateTransform() {{
                         scale = Math.min(Math.max(1, scale), 4);
@@ -353,7 +355,23 @@ class DogDripBackend:
                         container.style.transform = `translate(${{pointX}}px, ${{pointY}}px) scale(${{scale}})`;
                     }}
 
-                    // 📌 마우스 휠 + Ctrl 조합 (블루투스 마우스/키보드 줌) 지원
+                    function toggleZoom() {{
+                        if (scale > 1.05) {{
+                            scale = 1;
+                        }} else {{
+                            scale = 1.5;
+                        }}
+                        pointX = 0;
+                        pointY = 0;
+                        updateTransform();
+                    }}
+
+                    // 📌 마우스 더블클릭 확장 / 축소 지원
+                    document.addEventListener('dblclick', (e) => {{
+                        toggleZoom();
+                    }});
+
+                    // 📌 Ctrl + 마우스 휠 지원 (블루투스 마우스 Zoom)
                     document.addEventListener('wheel', (e) => {{
                         if (e.ctrlKey) {{
                             e.preventDefault();
@@ -363,8 +381,10 @@ class DogDripBackend:
                         }}
                     }}, {{ passive: false }});
 
-                    // 📌 터치 핀치 줌 지원 (모바일 두 손가락 줌만 정교하게 대응)
+                    // 📌 터치 이벤트 처리 (더블탭 + 핀치 줌)
                     document.addEventListener('touchstart', (e) => {{
+                        hasMoved = false; // 이동 유무 초기화
+                        
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -378,6 +398,8 @@ class DogDripBackend:
                     }});
 
                     document.addEventListener('touchmove', (e) => {{
+                        hasMoved = true; // 조금이라도 손가락 움직이면 스크롤로 간주
+                        
                         if (e.touches.length === 2) {{
                             const currentDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -395,6 +417,20 @@ class DogDripBackend:
                     }}, {{ passive: false }});
 
                     document.addEventListener('touchend', (e) => {{
+                        if (e.touches.length > 0) return;
+
+                        // 스크롤 이동이 아니었던 정지 터치에 한해서만 더블탭 감지
+                        if (!hasMoved) {{
+                            const now = new Date().getTime();
+                            const timeDiff = now - lastTapTime;
+
+                            // 250ms 이내 더블탭 시 확대/축소 토글
+                            if (timeDiff < 250 && timeDiff > 0) {{
+                                toggleZoom();
+                            }}
+                            lastTapTime = now;
+                        }}
+
                         lastScale = scale;
                         isDragging = false;
                     }});
