@@ -316,84 +316,23 @@ if st.session_state.selected_article:
     can_prev = (current_idx > 0)
     can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
 
-    # 1 & 3. 우측 하단 고정 플로팅 버튼 핫키 및 백스페이스 키보드 이벤트 (부모 창 직접 삽입)
-    st.components.v1.html("""
-    <script>
-        const doc = window.parent.document;
-        
-        // 기존 플로팅 박스가 있다면 제거 후 재생성
-        let oldBox = doc.getElementById('custom-floating-box');
-        if (oldBox) oldBox.remove();
-
-        const box = doc.createElement('div');
-        box.id = 'custom-floating-box';
-        box.style.cssText = `
-            position: fixed;
-            bottom: 85px;
-            right: 20px;
-            z-index: 999999;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        `;
-
-        box.innerHTML = `
-            <button id="float-top" style="width:45px; height:45px; background:#2563eb; color:white; border:none; border-radius:50%; font-size:18px; font-weight:bold; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3);">▲</button>
-            <button id="float-cmt" style="width:45px; height:45px; background:#2563eb; color:white; border:none; border-radius:50%; font-size:16px; font-weight:bold; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3);">💬</button>
-            <button id="float-prev" style="width:45px; height:45px; background:#3b82f6; color:white; border:none; border-radius:50%; font-size:16px; font-weight:bold; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3);">◀</button>
-            <button id="float-next" style="width:45px; height:45px; background:#3b82f6; color:white; border:none; border-radius:50%; font-size:16px; font-weight:bold; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.3);">▶</button>
-        `;
-
-        doc.body.appendChild(box);
-
-        // 이벤트 연동
-        doc.getElementById('float-top').onclick = () => window.parent.scrollTo({top: 0, behavior: 'smooth'});
-        doc.getElementById('float-cmt').onclick = () => {
-            const iframe = doc.querySelector('iframe[srcdoc*="comment-start-point"]');
-            if (iframe) {
-                iframe.scrollIntoView({behavior: 'smooth', block: 'start'});
-            }
-        };
-        doc.getElementById('float-prev').onclick = () => {
-            const btn = doc.querySelector('button[key-target="btn-prev"]');
-            if(btn) btn.click();
-        };
-        doc.getElementById('float-next').onclick = () => {
-            const btn = doc.querySelector('button[key-target="btn-next"]');
-            if(btn) btn.click();
-        };
-
-        // 3. 백스페이스 눌렀을 때 목록으로 이동 기능
-        window.parent.onkeydown = function(e) {
-            if (e.key === 'Backspace') {
-                const activeEl = doc.activeElement;
-                const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
-                if (!isInput) {
-                    const backBtn = doc.querySelector('button[key-target="btn-back"]');
-                    if (backBtn) backBtn.click();
-                }
-            }
-        };
-    </script>
-    """, height=0)
-
-    # 상단 버튼 바
+    # 상단 컨트롤 버튼 (목록 / 이전 / 다음 / 원글)
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
     with col_back:
-        btn_back = st.button("⬅️ 목록으로 (Backspace)", type="primary", use_container_width=True)
+        btn_back = st.button("⬅️ 목록으로", type="primary", use_container_width=True, key="main_btn_back")
         if btn_back:
             st.session_state.selected_article = None
             st.rerun()
             
     with col_prev:
-        btn_prev = st.button("◀ 이전글", disabled=not can_prev, use_container_width=True)
+        btn_prev = st.button("◀ 이전글", disabled=not can_prev, use_container_width=True, key="main_btn_prev")
         if btn_prev:
             st.session_state.selected_article = current_links[current_idx - 1]
             st.rerun()
 
     with col_next:
-        btn_next = st.button("다음글 ▶", disabled=not can_next, use_container_width=True)
+        btn_next = st.button("다음글 ▶", disabled=not can_next, use_container_width=True, key="main_btn_next")
         if btn_next:
             st.session_state.selected_article = current_links[current_idx + 1]
             st.rerun()
@@ -408,25 +347,119 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # DOM 탐색용 마킹 부여
-    st.markdown("""
-        <script>
-            const doc = window.parent.document;
-            const buttons = doc.querySelectorAll('button');
-            buttons.forEach(b => {
-                if(b.innerText.includes('목록으로')) b.setAttribute('key-target', 'btn-back');
-                if(b.innerText.includes('이전글')) b.setAttribute('key-target', 'btn-prev');
-                if(b.innerText.includes('다음글')) b.setAttribute('key-target', 'btn-next');
-            });
-        </script>
-    """, unsafe_allow_html=True)
+    # 1, 2, 3번 스크립트 기능 처리
+    components.html("""
+    <script>
+        const doc = window.parent.document;
+        
+        // 1. 기존 플로팅 박스 제거 후 재설정
+        let oldBox = doc.getElementById('custom-floating-box');
+        if (oldBox) oldBox.remove();
+
+        const box = doc.createElement('div');
+        box.id = 'custom-floating-box';
+        
+        // 2. 투명도 설정 (opacity: 0.45 반투명, 마우스 올려놓거나 누르면 1.0)
+        box.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            right: 16px;
+            z-index: 999999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            opacity: 0.45;
+            transition: opacity 0.2s ease-in-out;
+        `;
+
+        box.onmouseenter = () => box.style.opacity = '1.0';
+        box.onmouseleave = () => box.style.opacity = '0.45';
+        box.ontouchstart = () => box.style.opacity = '1.0';
+        box.ontouchend = () => setTimeout(() => box.style.opacity = '0.45', 1500);
+
+        const btnStyle = `
+            width:44px; height:44px;
+            background:#1e40af; color:white;
+            border:none; border-radius:50%;
+            font-size:16px; font-weight:bold;
+            cursor:pointer;
+            box-shadow:0 3px 8px rgba(0,0,0,0.4);
+            display:flex; align-items:center; justify-content:center;
+            user-select:none; -webkit-tap-highlight-color:transparent;
+        `;
+
+        box.innerHTML = `
+            <button id="float-top" style="${btnStyle}" title="게시글 상단으로">▲</button>
+            <button id="float-cmt" style="${btnStyle}" title="댓글 시작점으로">💬</button>
+            <button id="float-prev" style="${btnStyle}" title="이전글">◀</button>
+            <button id="float-next" style="${btnStyle}" title="다음글">▶</button>
+        `;
+
+        doc.body.appendChild(box);
+
+        // 버튼 액션
+        // ▲ 게시글 상단으로 이동
+        doc.getElementById('float-top').onclick = () => {
+            window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        // 💬 댓글 시작점 위치로 이동
+        doc.getElementById('float-cmt').onclick = () => {
+            const iframes = doc.querySelectorAll('iframe');
+            for (let iframe of iframes) {
+                try {
+                    const cmtEl = iframe.contentWindow.document.getElementById('comment-start-point');
+                    if (cmtEl) {
+                        iframe.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        cmtEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        break;
+                    }
+                } catch(e) {}
+            }
+        };
+
+        // ◀ 이전글 이동
+        doc.getElementById('float-prev').onclick = () => {
+            const btns = Array.from(doc.querySelectorAll('button'));
+            const target = btns.find(b => b.innerText.includes('이전글'));
+            if (target && !target.disabled) target.click();
+        };
+
+        // ▶ 다음글 이동
+        doc.getElementById('float-next').onclick = () => {
+            const btns = Array.from(doc.querySelectorAll('button'));
+            const target = btns.find(b => b.innerText.includes('다음글'));
+            if (target && !target.disabled) target.click();
+        };
+
+        // 3. 스마트폰 뒤로가기 버튼 / PC 백스페이스 이벤트 핸들링
+        if (!window.parent.location.hash.includes('detail')) {
+            window.parent.history.pushState({ page: 'detail' }, '', window.parent.location.href + '#detail');
+        }
+
+        window.parent.onpopstate = function(event) {
+            const btns = Array.from(doc.querySelectorAll('button'));
+            const backBtn = btns.find(b => b.innerText.includes('목록으로'));
+            if (backBtn) backBtn.click();
+        };
+
+        window.parent.onkeydown = function(e) {
+            if (e.key === 'Backspace') {
+                const active = doc.activeElement;
+                if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+                const btns = Array.from(doc.querySelectorAll('button'));
+                const backBtn = btns.find(b => b.innerText.includes('목록으로'));
+                if (backBtn) backBtn.click();
+            }
+        };
+    </script>
+    """, height=0)
 
     st.divider()
 
     with st.spinner("본문 및 댓글 로딩 중..."):
         detail = backend.fetch_article_detail(st.session_state.selected_article)
         if detail["success"]:
-            # 2. 이중 스크롤 완벽 방지: scrolling=False 및 자동 높이 설정
             components.html(
                 detail["html"], 
                 height=2200, 
@@ -439,12 +472,15 @@ if st.session_state.selected_article:
 # 게시글 목록 화면
 # ---------------------------------------------------------
 else:
-    # 목록 화면 전환 시 플로팅 박스 제거
-    st.components.v1.html("""
+    # 목록 화면으로 전환되면 플로팅 박스 및 히스토리 정리
+    components.html("""
     <script>
         const doc = window.parent.document;
         let oldBox = doc.getElementById('custom-floating-box');
         if (oldBox) oldBox.remove();
+        
+        window.parent.onpopstate = null;
+        window.parent.onkeydown = null;
     </script>
     """, height=0)
 
