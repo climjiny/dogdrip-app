@@ -8,7 +8,7 @@ import streamlit.components.v1 as components
 # Page config
 st.set_page_config(
     page_title="개드립 모바일 열람기",
-    page_icon="https://www.dogdrip.net/favicon.ico",
+    page_icon="🐶",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -18,6 +18,28 @@ try:
     from curl_cffi import requests as c_requests
 except ImportError:
     import requests as c_requests
+
+# 📌 모바일 환경에서 st.columns가 세로로 떨어지는 현상 방지 CSS
+st.markdown("""
+<style>
+    /* 모바일 화면에서도 컬럼 레이아웃을 무조건 가로(Row) 6등분으로 강제 고정 */
+    div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 4px !important;
+    }
+    div[data-testid="stHorizontalBlock"] > div {
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+    }
+    /* 버튼 내부 패딩 조절하여 크기 최적화 */
+    div[data-testid="stHorizontalBlock"] button {
+        padding: 4px 0px !important;
+        font-size: 14px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # 백엔드 엔진
@@ -140,7 +162,7 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 📌 1번 수정사항: 댓글 레벨 아이콘 + 닉네임 + 작성시간 한 줄(Flex) 가로배치 강제
+            # 댓글 영역 (레벨 아이콘 + 닉네임 + 작성시간 한 줄 배치)
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글"
@@ -152,23 +174,18 @@ class DogDripBackend:
                     cmt_items = comment_el.select('li')
 
                 for cmt in cmt_items:
-                    # 레벨 아이콘/이미지 추출
                     icon_el = cmt.select_one('img[src*="level"], img[src*="icon"], span.level, i.level')
                     icon_html = str(icon_el) if icon_el else ""
 
-                    # 닉네임
                     author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl')
                     author_text = author_el.get_text(strip=True) if author_el else "익명"
 
-                    # 작성시간
                     date_el = cmt.select_one('.date, span.time, time, .time')
                     date_text = date_el.get_text(strip=True) if date_el else ""
 
-                    # 댓글 본문
                     content_body = cmt.select_one('.xe_content, .comment-body, .text')
                     content_html = str(content_body) if content_body else ""
 
-                    # 대댓글 여부
                     is_reply = False
                     if 'indent' in cmt.get('class', []) or 'reply' in cmt.get('class', []) or 'parent' in str(cmt.get('style', '')):
                         is_reply = True
@@ -177,7 +194,6 @@ class DogDripBackend:
                     if content_html:
                         rebuilt_comments_html += f"""
                         <div style="margin-left: {margin_left}; padding: 10px 12px; margin-bottom: 8px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px;">
-                            <!-- 📌 레벨 + 닉네임 + 시간 한 줄 정렬 -->
                             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: nowrap; overflow: hidden;">
                                 {f'<span style="display:inline-flex; align-items:center;">{icon_html}</span>' if icon_html else ''}
                                 <span style="font-weight: 700; color: #2563eb; font-size: 14px; white-space: nowrap;">{author_text}</span>
@@ -194,7 +210,6 @@ class DogDripBackend:
 
             temp_soup = BeautifulSoup(body_html, 'html.parser')
 
-            # 상대경로 보정
             for tag in temp_soup.select('img, video, source, a, iframe'):
                 for attr in ['src', 'poster', 'data-src', 'href']:
                     if tag.has_attr(attr):
@@ -276,7 +291,6 @@ class DogDripBackend:
                         margin: 10px auto;
                         border-radius: 8px;
                     }}
-                    /* 댓글 내부 레벨 아이콘 인라인 처리 */
                     .comment-section-box img {{
                         display: inline-block !important;
                         margin: 0 !important;
@@ -411,7 +425,7 @@ class DogDripBackend:
             return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>", "title": "오류"}
 
 # ---------------------------------------------------------
-# Streamlit UI & 세션 상태 복원
+# Streamlit UI
 # ---------------------------------------------------------
 backend = DogDripBackend()
 
@@ -436,11 +450,11 @@ if not st.session_state.current_articles:
 
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
 
-# 📌 2번 수정사항: 개드립 로고 아이콘 + 깔끔하게 줄인 한 줄 제목 헤더
+# 📌 1. 로고 깨짐 방지를 위해 이모지(🐶) 기반의 한 줄 깔끔한 로고 제목으로 수정
 st.markdown("""
-<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; margin-top: -10px;">
-    <img src="https://www.dogdrip.net/favicon.ico" style="width: 26px; height: 26px; object-fit: contain;">
-    <span style="font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px; white-space: nowrap;">개드립 모바일 열람기</span>
+<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; margin-top: -10px;">
+    <span style="font-size: 24px;">🐶</span>
+    <span style="font-size: 20px; font-weight: 800; color: #0f172a; white-space: nowrap;">개드립 모바일 열람기</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -456,11 +470,11 @@ current_links = [art["link"] for art in st.session_state.current_articles]
 current_idx = current_links.index(st.session_state.selected_article) if (st.session_state.selected_article and st.session_state.selected_article in current_links) else -1
 can_prev = True if (st.session_state.page > 1 or current_idx > 0) else False
 
-# 📌 2번 수정사항: 검색창 아래 1줄 아이콘 버튼 네비게이션 ([🏠 홈] [🔍 검색] [🔄 새로고침] [📋 목록] [◀ 이전] [▶ 다음])
-b_col1, b_col2, b_col3, b_col4, b_col5, b_col6 = st.columns([1, 1, 1, 1, 1, 1])
+# 📌 2. 검색창 아래 버튼 6개가 한 줄(가로)로 모바일에 쏙 들어가도록 배치
+b_col1, b_col2, b_col3, b_col4, b_col5, b_col6 = st.columns(6)
 
 with b_col1:
-    if st.button("🏠", use_container_width=True, help="홈으로"):
+    if st.button("🏠", use_container_width=True, help="홈"):
         st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
@@ -482,7 +496,7 @@ with b_col3:
         st.rerun()
 
 with b_col4:
-    if st.button("📋", disabled=(not st.session_state.selected_article), use_container_width=True, help="목록으로"):
+    if st.button("📋", disabled=(not st.session_state.selected_article), use_container_width=True, help="목록"):
         st.session_state.selected_article = None
         st.session_state.selected_title = ""
         st.query_params.clear()
@@ -527,7 +541,6 @@ if st.session_state.selected_article:
     if current_idx >= 0 and not st.session_state.selected_title:
         st.session_state.selected_title = st.session_state.current_articles[current_idx]["title"]
 
-    # 📌 플로팅 버튼 및 스마트폰 뒤로가기 제어
     components.html("""
     <script>
         const doc = window.parent.document;
