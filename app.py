@@ -471,39 +471,24 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 검색창
-keyword_input = st.text_input(
-    "검색어", 
-    value=st.session_state.search_keyword, 
-    placeholder="🔍 검색어 입력...", 
-    label_visibility="collapsed"
-)
+# 📌 폼(Form) 구조를 이용해 엔터 입력 시 곧바로 검색이 수행되도록 처리
+with st.form(key="search_form", clear_on_submit=False):
+    keyword_input = st.text_input(
+        "검색어", 
+        value=st.session_state.search_keyword, 
+        placeholder="🔍 검색어 입력...", 
+        label_visibility="collapsed"
+    )
+    submit_search = st.form_submit_button(label="검색 실행", use_container_width=True)
 
-# 📌 검색창 엔터 키 이벤트 감지 및 처리 스크립트 추가
-components.html("""
-<script>
-    const doc = window.parent.document;
-    const inputs = doc.querySelectorAll('input[type="text"]');
-    inputs.forEach(input => {
-        // 이미 이벤트를 등록했는지 확인하는 속성 체크
-        if (!input.dataset.enterBound) {
-            input.dataset.enterBound = "true";
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') {
-                    // 엔터 입력 시 검색 버튼(🔍)을 찾아 자동으로 클릭 실행
-                    const buttons = doc.querySelectorAll('button');
-                    for (let btn of buttons) {
-                        if (btn.innerText.includes('🔍')) {
-                            btn.click();
-                            break;
-                        }
-                    }
-                }
-            });
-        }
-    });
-</script>
-""", height=0)
+# 폼이 제출되었거나 엔터가 눌렸을 때의 처리
+if submit_search:
+    st.session_state.search_keyword = keyword_input
+    st.session_state.page = 1
+    st.session_state.selected_article = None
+    st.session_state.selected_title = ""
+    st.query_params.clear()
+    st.rerun()
 
 current_links = [art["link"] for art in st.session_state.current_articles]
 current_idx = current_links.index(st.session_state.selected_article) if (st.session_state.selected_article and st.session_state.selected_article in current_links) else -1
