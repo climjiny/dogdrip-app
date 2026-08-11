@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import streamlit as st
 import streamlit.components.v1 as components
 
-# Page config for Mobile Responsive UI
+# Page config
 st.set_page_config(
     page_title="개드립 열람기",
     page_icon="🐶",
@@ -20,7 +20,7 @@ except ImportError:
     import requests as c_requests
 
 # ---------------------------------------------------------
-# 백엔드 엔진 (사용자 원본 로직 100% 보존)
+# 백엔드 엔진
 # ---------------------------------------------------------
 class DogDripBackend:
     def __init__(self):
@@ -136,8 +136,12 @@ class DogDripBackend:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
             if comment_el:
-                for unneeded in comment_el.select('form, .comment-editor, .btn-area, .rhymix_comment_editor'):
+                for unneeded in comment_el.select('form, .comment-editor, .btn-area, .rhymix_comment_editor, .vote, .voted_count, .vote_area'):
                     unneeded.decompose()
+
+                for el in comment_el.select('.number, .num, .vote-count, .vote'):
+                    el.decompose()
+
                 body_html += f"""
                 <div class='comment-section-box'>
                     <h3 class='comment-section-header'>💬 댓글</h3>
@@ -185,18 +189,20 @@ class DogDripBackend:
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <meta name="referrer" content="no-referrer">
                 <style>
-                    body {{
+                    html, body {{
                         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                        padding: 10px;
+                        padding: 0;
+                        margin: 0;
                         color: #1e293b;
-                        line-height: 1.6;
+                        line-height: 1.5;
                         background: #ffffff;
+                        overflow: hidden;
                     }}
                     .article-title {{
                         font-size: 18px;
                         font-weight: 800;
                         color: #0f172a;
-                        margin-bottom: 12px;
+                        margin-bottom: 10px;
                         padding-bottom: 8px;
                         border-bottom: 2px solid #e2e8f0;
                     }}
@@ -204,7 +210,7 @@ class DogDripBackend:
                         max-width: 100% !important;
                         height: auto !important;
                         display: block;
-                        margin: 12px auto;
+                        margin: 10px auto;
                         border-radius: 8px;
                     }}
                     iframe {{
@@ -214,23 +220,27 @@ class DogDripBackend:
                         border: none;
                     }}
                     .comment-section-box {{
-                        margin-top: 25px;
-                        padding-top: 15px;
+                        margin-top: 15px;
+                        padding-top: 10px;
                         border-top: 2px dashed #cbd5e1;
                     }}
                     .comment-section-header {{
-                        font-size: 16px;
+                        font-size: 15px;
                         font-weight: 800;
                         color: #1e40af;
-                        margin-bottom: 12px;
-                    }}
-                    .comment-item {{
-                        padding: 8px 12px;
                         margin-bottom: 8px;
+                    }}
+                    .comment-item, div[id^="comment_"] {{
+                        padding: 4px 8px !important;
+                        margin-bottom: 4px !important;
                         border: 1px solid #f1f5f9;
-                        border-radius: 6px;
+                        border-radius: 4px;
                         background: #f8fafc;
-                        font-size: 13px;
+                        font-size: 12.5px !important;
+                        line-height: 1.3 !important;
+                    }}
+                    .vote, .voted_count, .vote_area, .vote-count {{
+                        display: none !important;
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
@@ -246,7 +256,7 @@ class DogDripBackend:
             return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>"}
 
 # ---------------------------------------------------------
-# Streamlit 모바일 전용 프론트엔드 UI
+# Streamlit UI
 # ---------------------------------------------------------
 @st.cache_resource
 def get_backend():
@@ -259,52 +269,155 @@ if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
     st.session_state.selected_article = None
+if "search_keyword" not in st.session_state:
+    st.session_state.search_keyword = ""
+if "current_articles" not in st.session_state:
+    st.session_state.current_articles = []
+
+# 플로팅 위/아래 스크롤 버튼 CSS 및 HTML
+st.markdown("""
+<style>
+    .scroll-btn-container {
+        position: fixed;
+        bottom: 25px;
+        right: 15px;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .scroll-btn {
+        width: 40px;
+        height: 40px;
+        background-color: rgba(37, 99, 235, 0.65);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        backdrop-filter: blur(4px);
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .scroll-btn:hover {
+        background-color: rgba(37, 99, 235, 0.95);
+        transform: scale(1.08);
+    }
+</style>
+
+<div class="scroll-btn-container">
+    <button class="scroll-btn" onclick="window.scrollTo({top: 0, behavior: 'smooth'});">▲</button>
+    <button class="scroll-btn" onclick="window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});">▼</button>
+</div>
+""", unsafe_allow_html=True)
 
 st.title("🐶 개드립 모바일 열람기")
 
-# 1. 상단 컨트롤 바 (검색 및 새로고침)
-col_search, col_btn1, col_btn2 = st.columns([3, 1, 1])
-with col_search:
-    keyword = st.text_input("검색어", placeholder="검색어 입력 후 엔터", label_visibility="collapsed")
-with col_btn1:
-    if st.button("🔍 검색", use_container_width=True):
+# 상단 컨트롤 바 (Home 버튼, 검색어, 검색, 새로고침)
+col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
+
+with col_home:
+    if st.button("🏠 홈", use_container_width=True, type="secondary"):
+        st.session_state.search_keyword = ""
         st.session_state.page = 1
         st.session_state.selected_article = None
+        st.rerun()
+
+with col_search:
+    keyword_input = st.text_input(
+        "검색어", 
+        value=st.session_state.search_keyword, 
+        placeholder="검색어 입력", 
+        label_visibility="collapsed"
+    )
+
+with col_btn1:
+    if st.button("🔍 검색", use_container_width=True):
+        st.session_state.search_keyword = keyword_input
+        st.session_state.page = 1
+        st.session_state.selected_article = None
+        st.rerun()
+
 with col_btn2:
     if st.button("🔄 새로고침", use_container_width=True):
         st.session_state.selected_article = None
         st.rerun()
 
-# 2. 본문 보기 화면 (게시글이 선택된 경우)
+# ---------------------------------------------------------
+# 본문 보기 화면
+# ---------------------------------------------------------
 if st.session_state.selected_article:
-    if st.button("⬅️ 목록으로 돌아가기", type="primary", use_container_width=True):
-        st.session_state.selected_article = None
-        st.rerun()
+    # 이전글 / 다음글 위치 추적 로직
+    current_links = [art["link"] for art in st.session_state.current_articles]
+    current_idx = current_links.index(st.session_state.selected_article) if st.session_state.selected_article in current_links else -1
+
+    # 상단 컨트롤 버튼 (목록으로 / 원글 보기 / 이전글 / 다음글)
+    col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
+    
+    with col_back:
+        if st.button("⬅️ 목록으로", type="primary", use_container_width=True):
+            st.session_state.selected_article = None
+            st.rerun()
+            
+    with col_prev:
+        # 이전 글 이동 버튼
+        can_prev = (current_idx > 0)
+        if st.button("◀ 이전글", disabled=not can_prev, use_container_width=True):
+            st.session_state.selected_article = current_links[current_idx - 1]
+            st.rerun()
+
+    with col_next:
+        # 다음 글 이동 버튼
+        can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
+        if st.button("다음글 ▶", disabled=not can_next, use_container_width=True):
+            st.session_state.selected_article = current_links[current_idx + 1]
+            st.rerun()
+
+    with col_link:
+        st.markdown(
+            f'''<a href="{st.session_state.selected_article}" target="_blank" style="text-decoration:none;">
+                <button style="width:100%; height:38px; background-color:#ea580c; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">
+                    🌐 원글 보기
+                </button>
+            </a>''', 
+            unsafe_allow_html=True
+        )
+
+    st.divider()
 
     with st.spinner("본문 및 댓글 로딩 중..."):
         detail = backend.fetch_article_detail(st.session_state.selected_article)
         if detail["success"]:
-            # HTML을 높이에 맞게 렌더링
-            components.html(detail["html"], height=1000, scrolling=True)
-            st.markdown(f"[🌐 브라우저에서 원본 보기]({detail['link']})")
+            components.html(
+                detail["html"], 
+                height=1800, 
+                scrolling=False
+            )
         else:
             st.error(f"오류 발생: {detail['error']}")
 
-# 3. 게시글 목록 화면 (선택된 게시글이 없을 때)
+# ---------------------------------------------------------
+# 게시글 목록 화면
+# ---------------------------------------------------------
 else:
     with st.spinner(f"페이지 {st.session_state.page} 데이터 수집 중..."):
-        res = backend.fetch_articles(page=st.session_state.page, keyword=keyword)
+        res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
 
     if res["success"] and res["articles"]:
-        st.caption(f"📄 현재 {st.session_state.page} 페이지 (총 {len(res['articles'])}개 게시글)")
+        st.session_state.current_articles = res["articles"] # 목록 데이터 캐싱 (이전/다음 글 용)
         
-        # 목록 출력 (버튼 클릭 시 해당 글 선택)
+        status_msg = f"🔍 '{st.session_state.search_keyword}' 검색결과 ({st.session_state.page} 페이지)" if st.session_state.search_keyword else f"📄 현재 {st.session_state.page} 페이지 (총 {len(res['articles'])}개 게시글)"
+        st.caption(status_msg)
+        
         for art in res["articles"]:
             if st.button(art["title"], key=art["link"], use_container_width=True):
                 st.session_state.selected_article = art["link"]
                 st.rerun()
 
-        # 페이지네이션
         st.divider()
         col_p1, col_p2, col_p3 = st.columns([1, 2, 1])
         with col_p1:
