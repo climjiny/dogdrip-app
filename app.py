@@ -216,10 +216,10 @@ class DogDripBackend:
                         elif val.startswith('/'):
                             tag[attr] = 'https://www.dogdrip.net' + val
 
-            # 📌 이미지(img)를 감싸고 있는 링크(a 태그) 제거 및 이미지 새창 열기 방지 처리
+            # 이미지 새창 열기 방지 (a 태그 언랩)
             for a in temp_soup.select('a'):
                 if a.select('img'):
-                    a.unwrap() # 링크 태그만 벗겨내어 이미지 클릭 시 새창이 뜨지 않도록 방지
+                    a.unwrap()
 
             for v in temp_soup.select('video'):
                 v['controls'] = ''
@@ -242,7 +242,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 이미지 클릭/터치 기본 동작 차단 및 커서/터치 중심 확대 스크립트 적용
+            # 📌 딜레이 1초로 단축된 스크립트 적용
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -293,7 +293,7 @@ class DogDripBackend:
                         display: block;
                         margin: 10px auto;
                         border-radius: 8px;
-                        pointer-events: auto; /* 터치 이벤트는 받되 링크 기능은 제거됨 */
+                        pointer-events: auto;
                     }}
                     .comment-section-box img {{
                         display: inline-block !important;
@@ -365,7 +365,7 @@ class DogDripBackend:
 
                     function toggleZoomAt(clientX, clientY) {{
                         const now = new Date().getTime();
-                        if (now < zoomLockUntil) return; // 2초 딜레이 보호
+                        if (now < zoomLockUntil) return; // 1초 딜레이 보호
 
                         if (scale > 1.05) {{
                             scale = 1;
@@ -380,7 +380,7 @@ class DogDripBackend:
                             pointY = y - y * scale;
                         }}
                         updateTransform();
-                        zoomLockUntil = now + 2000;
+                        zoomLockUntil = now + 1000; // 딜레이를 1초(1000ms)로 단축
                     }}
 
                     document.addEventListener('dblclick', (e) => {{
