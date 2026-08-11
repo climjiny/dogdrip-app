@@ -142,7 +142,6 @@ class DogDripBackend:
                 for el in comment_el.select('.number, .num, .vote-count, .vote'):
                     el.decompose()
 
-                # 댓글 시작점 식별용 id='comment-start-point' 추가
                 body_html += f"""
                 <div id='comment-start-point' class='comment-section-box'>
                     <h3 class='comment-section-header'>💬 댓글</h3>
@@ -246,7 +245,7 @@ class DogDripBackend:
                 </style>
             </head>
             <body>
-                <div id="article-start-point" class="article-title">{title_text}</div>
+                <div id="article-top-anchor" class="article-title">{title_text}</div>
                 <div class="article-body">{clean_body_html}</div>
             </body>
             </html>
@@ -274,63 +273,55 @@ if "search_keyword" not in st.session_state:
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
 
-# 우측 하단 플로팅 핫키 메뉴 (위치 상향 조정 & 스크롤 JS 보완)
-st.markdown("""
+# 우측 하단 플로팅 핫키 버튼 (오류 예방을 위해 스크립트를 컴팩트하게 정리)
+floating_html = """
 <style>
-    .scroll-btn-container {
+    .floating-box {
         position: fixed;
-        bottom: 80px; /* Streamlit 아이콘 피하기 위해 위치를 위로 상승 */
-        right: 16px;
+        bottom: 90px;
+        right: 18px;
         z-index: 999999;
         display: flex;
         flex-direction: column;
         gap: 8px;
     }
-    .scroll-btn {
+    .floating-btn {
         width: 44px;
         height: 44px;
-        background-color: rgba(37, 99, 235, 0.85);
+        background-color: #2563eb;
         color: white;
         border: none;
         border-radius: 50%;
         font-size: 16px;
         font-weight: bold;
         cursor: pointer;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-        backdrop-filter: blur(4px);
-        transition: all 0.15s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         display: flex;
         align-items: center;
         justify-content: center;
+        text-decoration: none;
     }
-    .scroll-btn:active {
-        transform: scale(0.92);
-        background-color: rgba(29, 78, 216, 1);
+    .floating-btn:active {
+        transform: scale(0.95);
+        background-color: #1d4ed8;
     }
 </style>
-
-<div class="scroll-btn-container">
-    <button class="scroll-btn" title="게시글 상단" onclick="
-        const iframe = document.querySelector('iframe');
+<div class="floating-box">
+    <button class="floating-btn" title="게시글 최상단" onclick="window.parent.scrollTo({top: 0, behavior: 'smooth'});">▲</button>
+    <button class="floating-btn" title="댓글 위치로" onclick="
+        var iframe = window.parent.document.querySelector('iframe');
         if(iframe && iframe.contentWindow) {
-            iframe.contentWindow.document.getElementById('article-start-point')?.scrollIntoView({behavior: 'smooth'});
-        } else {
-            window.parent.scrollTo({top: 0, behavior: 'smooth'});
-        }
-    ">▲</button>
-    
-    <button class="scroll-btn" title="댓글 위치로" onclick="
-        const iframe = document.querySelector('iframe');
-        if(iframe && iframe.contentWindow) {
-            iframe.contentWindow.document.getElementById('comment-start-point')?.scrollIntoView({behavior: 'smooth'});
+            var cmt = iframe.contentWindow.document.getElementById('comment-start-point');
+            if(cmt) cmt.scrollIntoView({behavior: 'smooth'});
         }
     ">💬</button>
 </div>
-""", unsafe_allow_html=True)
+"""
+components.html(floating_html, height=0)
 
 st.title("🐶 개드립 모바일 열람기")
 
-# 상단 컨트롤 바 (Home 버튼, 검색어, 검색, 새로고침)
+# 상단 컨트롤 바
 col_home, col_search, col_btn1, col_btn2 = st.columns([1.2, 3, 1, 1])
 
 with col_home:
@@ -370,17 +361,7 @@ if st.session_state.selected_article:
     can_prev = (current_idx > 0)
     can_next = (current_idx >= 0 and current_idx < len(current_links) - 1)
 
-    # 2. 요구사항: 이전글 / 다음글 플로팅 핫키 버튼 추가 (우측 하단)
-    st.markdown(f"""
-    <div class="scroll-btn-container" style="bottom: 186px;">
-        <button class="scroll-btn" style="background-color: {'rgba(37, 99, 235, 0.85)' if can_prev else 'rgba(148, 163, 184, 0.5)'}" 
-                title="이전글" onclick="document.getElementById('floating-prev-btn')?.click();" {'disabled' if not can_prev else ''}>◀</button>
-        <button class="scroll-btn" style="background-color: {'rgba(37, 99, 235, 0.85)' if can_next else 'rgba(148, 163, 184, 0.5)'}" 
-                title="다음글" onclick="document.getElementById('floating-next-btn')?.click();" {'disabled' if not can_next else ''}>▶</button>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 상단 컨트롤 버튼 (기존 유지)
+    # 상단 컨트롤 버튼 (목록으로 / 이전글 / 다음글 / 원글 보기)
     col_back, col_prev, col_next, col_link = st.columns([1.5, 1, 1, 1.5])
     
     with col_back:
@@ -389,12 +370,12 @@ if st.session_state.selected_article:
             st.rerun()
             
     with col_prev:
-        if st.button("◀ 이전글", key="floating-prev-btn", disabled=not can_prev, use_container_width=True):
+        if st.button("◀ 이전글", disabled=not can_prev, use_container_width=True):
             st.session_state.selected_article = current_links[current_idx - 1]
             st.rerun()
 
     with col_next:
-        if st.button("다음글 ▶", key="floating-next-btn", disabled=not can_next, use_container_width=True):
+        if st.button("다음글 ▶", disabled=not can_next, use_container_width=True):
             st.session_state.selected_article = current_links[current_idx + 1]
             st.rerun()
 
