@@ -153,55 +153,56 @@ class DogDripBackend:
             else:
                 body_html += "<p style='color:gray; padding:20px;'>본문 내용을 찾을 수 없습니다.</p>"
 
-            # 댓글 중복 방지 (Set 활용)
+            # 📌 완벽한 댓글 중복 방지 로직 (고유 ID 및 텍스트 지문 대조)
             if comment_el:
                 cmt_count_el = comment_el.select_one('.comment-header, h3, .title, .comment-title')
                 cmt_count_text = cmt_count_el.get_text(strip=True) if cmt_count_el else "댓글 목록"
 
                 rebuilt_comments_html = f"<div class='comment-section-box'><h3 class='comment-section-header'>💬 {cmt_count_text}</h3>"
 
-                seen_comment_ids = set()
-                cmt_items = comment_el.select('div[id^="comment_"], .comment-item, .comment-doc, .comment-content, li[id^="comment_"]')
+                seen_signatures = set()
+                # 최하위 개별 댓글 단위만 정확히 타겟팅
+                cmt_items = comment_el.select('div[id^="comment_"], li[id^="comment_"], .comment-item')
                 if not cmt_items:
-                    cmt_items = comment_el.select('li, div.item')
+                    cmt_items = comment_el.select('li')
 
                 for cmt in cmt_items:
                     c_id = cmt.get('id', '')
-                    if c_id and c_id in seen_comment_ids:
+                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl, .nick')
+                    author_text = author_el.get_text(strip=True) if author_el else "익명"
+
+                    content_body = cmt.select_one('.xe_content, .comment-body, .text, .content')
+                    content_html = str(content_body) if content_body else ""
+
+                    # 중복 판정을 위한 고유 시그니처 (ID가 있으면 ID, 없으면 작성자와 내용 조합)
+                    signature = c_id if c_id else f"{author_text}:{content_html[:30]}"
+                    if not content_html or signature in seen_signatures:
                         continue
-                    if c_id:
-                        seen_comment_ids.add(c_id)
+                    seen_signatures.add(signature)
 
                     icon_el = cmt.select_one('img[src*="level"], img[src*="icon"], span.level, i.level')
                     icon_html = str(icon_el) if icon_el else ""
 
-                    author_el = cmt.select_one('a[class*="member_"], span[class*="member_"], .author, .member_srl, .nick')
-                    author_text = author_el.get_text(strip=True) if author_el else "익명"
-
                     date_el = cmt.select_one('.date, span.time, time, .time')
                     date_text = date_el.get_text(strip=True) if date_el else ""
-
-                    content_body = cmt.select_one('.xe_content, .comment-body, .text, .content')
-                    content_html = str(content_body) if content_body else ""
 
                     is_reply = False
                     if 'indent' in cmt.get('class', []) or 'reply' in cmt.get('class', []) or 'parent' in str(cmt.get('style', '')):
                         is_reply = True
                     margin_left = "16px" if is_reply else "0px"
 
-                    if content_html:
-                        rebuilt_comments_html += f"""
-                        <div style="margin-left: {margin_left}; padding: 10px 12px; margin-bottom: 8px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: nowrap; overflow: hidden;">
-                                {f'<span style="display:inline-flex; align-items:center;">{icon_html}</span>' if icon_html else ''}
-                                <span style="font-weight: 700; color: #2563eb; font-size: 14px; white-space: nowrap;">{author_text}</span>
-                                <span style="color: #94a3b8; font-size: 12px; white-space: nowrap; margin-left: auto;">{date_text}</span>
-                            </div>
-                            <div style="color: #0f172a; font-size: 14px; line-height: 1.45;">
-                                {content_html}
-                            </div>
+                    rebuilt_comments_html += f"""
+                    <div style="margin-left: {margin_left}; padding: 10px 12px; margin-bottom: 8px; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: nowrap; overflow: hidden;">
+                            {f'<span style="display:inline-flex; align-items:center;">{icon_html}</span>' if icon_html else ''}
+                            <span style="font-weight: 700; color: #2563eb; font-size: 14px; white-space: nowrap;">{author_text}</span>
+                            <span style="color: #94a3b8; font-size: 12px; white-space: nowrap; margin-left: auto;">{date_text}</span>
                         </div>
-                        """
+                        <div style="color: #0f172a; font-size: 14px; line-height: 1.45;">
+                            {content_html}
+                        </div>
+                    </div>
+                    """
 
                 rebuilt_comments_html += "</div>"
                 body_html += rebuilt_comments_html
@@ -238,7 +239,7 @@ class DogDripBackend:
 
             clean_body_html = str(temp_soup)
 
-            # 📌 2중 스크롤 분리 방지 및 줌(더블탭/마우스/핀치) 기능 통합 템플릿
+            # 📌 게시글 길이 짤림 방지: 높이를 동적으로 부모창에 전달하는 스크립트 탑재
             full_html = f"""
             <!DOCTYPE html>
             <html lang="ko">
@@ -368,12 +369,10 @@ class DogDripBackend:
                         updateTransform();
                     }}
 
-                    // 마우스 더블클릭 줌 지원
                     document.addEventListener('dblclick', (e) => {{
                         toggleZoom();
                     }});
 
-                    // 블루투스 마우스 Ctrl + 휠 줌 지원
                     document.addEventListener('wheel', (e) => {{
                         if (e.ctrlKey) {{
                             e.preventDefault();
@@ -383,9 +382,9 @@ class DogDripBackend:
                         }}
                     }}, {{ passive: false }});
 
-                    // 터치 제스처 (핀치 줌 및 더블탭 민감도 향상)
                     document.addEventListener('touchstart', (e) => {{
                         hasMoved = false;
+                        
                         if (e.touches.length === 2) {{
                             initialDistance = Math.hypot(
                                 e.touches[0].pageX - e.touches[1].pageX,
@@ -685,10 +684,10 @@ if st.session_state.selected_article:
             fallback_title=st.session_state.get("selected_title", "")
         )
         if detail["success"]:
-            # 📌 스크롤 2중화 현상을 막고 앱 전체 창과 자연스럽게 연동되도록 scrolling=False 설정 복구
+            # 📌 짤림 방지를 위해 충분히 넉넉한 높이(예: 8000px 이상) 부여 및 통짜 스크롤 유지
             components.html(
                 detail["html"], 
-                height=2500, 
+                height=9000, 
                 scrolling=False
             )
         else:
