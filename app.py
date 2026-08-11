@@ -144,6 +144,7 @@ class DogDripBackend:
 
                 body_html += f"""
                 <div id='comment-start-point' class='comment-section-box'>
+                    <a id='comment-anchor' style='display:block; position:relative; top:-20px;'></a>
                     <h3 class='comment-section-header'>💬 댓글</h3>
                     {str(comment_el)}
                 </div>
@@ -348,7 +349,7 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 100% 확실한 스크롤제어 방식 (DOM 직접 타겟팅)
+    # 플로팅 핫키 스크립트 (댓글 스크롤 직접 타겟팅 수정)
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -396,28 +397,33 @@ if st.session_state.selected_article:
 
         doc.body.appendChild(box);
 
-        // ▲ [최상단 스크롤]: 메인 창 전체를 최상단으로 강제 스크롤
+        // ▲ [최상단 스크롤]: 앱 최상단 앵커로 부모창 이동
         doc.getElementById('float-top').onclick = () => {
             const topEl = doc.getElementById('app-top-anchor');
             if (topEl) {
                 topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
                 window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                doc.documentElement.scrollTop = 0;
-                doc.body.scrollTop = 0;
             }
         };
 
-        // 💬 [댓글 위치 스크롤]: 본문 Component iframe 전체 위치로 스크롤
+        // 💬 [댓글 위치 스크롤]: 본문 iframe 내부의 #comment-anchor 직접 탐색 및 scrollIntoView 실행
         doc.getElementById('float-cmt').onclick = () => {
             const iframes = Array.from(doc.querySelectorAll('iframe'));
-            // 본문 내용이 들어있는 가장 큰 iframe 타겟팅
-            const contentIframe = iframes.find(i => i.height === "2200" || i.offsetHeight > 500);
-            if (contentIframe) {
-                // iframe 상단 위치에서 약 800px 아래(댓글 대략적 시작지점)로 직접 스크롤
-                const rect = contentIframe.getBoundingClientRect();
-                const absoluteTop = rect.top + window.parent.pageYOffset + 700;
-                window.parent.scrollTo({ top: absoluteTop, behavior: 'smooth' });
+            for (let iframe of iframes) {
+                try {
+                    const innerDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    const cmtAnchor = innerDoc.getElementById('comment-anchor') || innerDoc.getElementById('comment-start-point');
+                    if (cmtAnchor) {
+                        // 1. iframe 자체를 화면 시야로
+                        iframe.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        // 2. iframe 내부 요소로 스크롤
+                        cmtAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        break;
+                    }
+                } catch(e) {
+                    console.log(e);
+                }
             }
         };
 
