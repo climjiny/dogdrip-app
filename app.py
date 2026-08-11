@@ -19,9 +19,16 @@ try:
 except ImportError:
     import requests as c_requests
 
-# 📌 모바일 환경에서 st.columns가 세로로 떨어지는 현상 방지 CSS
+# 📌 CSS 스타일: 모바일 레이아웃 고정 및 워터마크/메뉴 숨기기
 st.markdown("""
 <style>
+    /* 상단 메뉴(햄버거 버튼), 헤더, 하단 워터마크 숨기기 */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    div[data-testid="stToolbar"] {visibility: hidden; height: 0%; position: fixed;}
+    div[data-testid="stDecoration"] {visibility: hidden; height: 0%; position: fixed;}
+    
     /* 모바일 화면에서도 컬럼 레이아웃을 무조건 가로(Row) 6등분으로 강제 고정 */
     div[data-testid="stHorizontalBlock"] {
         display: flex !important;
@@ -471,7 +478,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 📌 폼(Form) 구조를 이용해 엔터 입력 시 곧바로 검색이 수행되도록 처리
+# 검색창 (폼 이용)
 with st.form(key="search_form", clear_on_submit=False):
     keyword_input = st.text_input(
         "검색어", 
@@ -481,7 +488,6 @@ with st.form(key="search_form", clear_on_submit=False):
     )
     submit_search = st.form_submit_button(label="검색 실행", use_container_width=True)
 
-# 폼이 제출되었거나 엔터가 눌렸을 때의 처리
 if submit_search:
     st.session_state.search_keyword = keyword_input
     st.session_state.page = 1
