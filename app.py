@@ -143,8 +143,8 @@ class DogDripBackend:
                     el.decompose()
 
                 body_html += f"""
-                <div id='comment-start-point' class='comment-section-box'>
-                    <h3 id='comment-target-header' class='comment-section-header'>💬 댓글</h3>
+                <div class='comment-section-box'>
+                    <h3 class='comment-section-header'>💬 댓글</h3>
                     {str(comment_el)}
                 </div>
                 """
@@ -243,21 +243,6 @@ class DogDripBackend:
                     }}
                     a {{ color: #2563eb; text-decoration: none; }}
                 </style>
-                <script>
-                    // 부모 창으로 파란색 '💬 댓글' 타이틀의 정확한 Y 오프셋을 전송
-                    function notifyCommentOffset() {{
-                        const target = document.getElementById('comment-target-header') || document.getElementById('comment-start-point');
-                        if (target) {{
-                            const topPos = target.offsetTop;
-                            window.parent.postMessage({{ type: 'SET_COMMENT_TOP', offsetTop: topPos }}, '*');
-                        }}
-                    }}
-
-                    window.onload = function() {{
-                        setTimeout(notifyCommentOffset, 300);
-                        setTimeout(notifyCommentOffset, 1000); // 이미지 로딩 시 위치 변동 대비 2차 전송
-                    }};
-                </script>
             </head>
             <body>
                 <div class="article-title">{title_text}</div>
@@ -270,7 +255,7 @@ class DogDripBackend:
             return {"success": False, "error": str(e), "html": f"<h3>로드 오류</h3><p>{e}</p>"}
 
 # ---------------------------------------------------------
-# Streamlit UI & URL Query Param 처리 (새로고침 시 게시글 유지)
+# Streamlit UI & 세션 상태 복원
 # ---------------------------------------------------------
 @st.cache_resource
 def get_backend():
@@ -278,21 +263,24 @@ def get_backend():
 
 backend = get_backend()
 
-# URL 쿼리 파라미터 확인 (새로고침 대응)
+# URL 쿼리 파라미터 파싱
 query_params = st.query_params
 url_article = query_params.get("article", None)
-
-if url_article and "selected_article" not in st.session_state:
-    st.session_state.selected_article = url_article
 
 if "page" not in st.session_state:
     st.session_state.page = 1
 if "selected_article" not in st.session_state:
-    st.session_state.selected_article = None
+    st.session_state.selected_article = url_article
 if "search_keyword" not in st.session_state:
     st.session_state.search_keyword = ""
 if "current_articles" not in st.session_state:
     st.session_state.current_articles = []
+
+# 새로고침 등으로 게시글 목록이 날아간 경우 자동 복구
+if not st.session_state.current_articles:
+    res = backend.fetch_articles(page=st.session_state.page, keyword=st.session_state.search_keyword)
+    if res["success"]:
+        st.session_state.current_articles = res["articles"]
 
 # 최상단 이동용 앵커
 st.markdown("<div id='app-top-anchor'></div>", unsafe_allow_html=True)
@@ -333,7 +321,6 @@ with col_btn2:
 # 본문 보기 화면
 # ---------------------------------------------------------
 if st.session_state.selected_article:
-    # URL 쿼리 파라미터에 현재 선택한 게시글 링크 등록 (새로고침 시 유지용)
     st.query_params["article"] = st.session_state.selected_article
 
     current_links = [art["link"] for art in st.session_state.current_articles]
@@ -376,7 +363,7 @@ if st.session_state.selected_article:
             unsafe_allow_html=True
         )
 
-    # 플로팅 핫키 스크립트 (댓글 위치 정확 이동 로직 최적화)
+    # 플로팅 핫키 스크립트 (▼ 댓글버튼 제거됨)
     components.html("""
     <script>
         const doc = window.parent.document;
@@ -417,22 +404,11 @@ if st.session_state.selected_article:
 
         box.innerHTML = `
             <button id="float-top" style="${btnStyle}" title="게시글 상단으로">▲</button>
-            <button id="float-cmt" style="${btnStyle}" title="댓글 위치로 이동">▼</button>
             <button id="float-prev" style="${btnStyle}" title="이전글">◀</button>
             <button id="float-next" style="${btnStyle}" title="다음글">▶</button>
         `;
 
         doc.body.appendChild(box);
-
-        // 댓글 상대 높이 저장 변수
-        window.commentRelativeTop = 0;
-
-        // iframe에서 댓글 위치 측정값이 올 때 파싱
-        window.addEventListener('message', function(e) {
-            if (e.data && e.data.type === 'SET_COMMENT_TOP') {
-                window.commentRelativeTop = e.data.offsetTop;
-            }
-        });
 
         // ▲ 최상단 이동
         doc.getElementById('float-top').onclick = () => {
@@ -441,25 +417,6 @@ if st.session_state.selected_article:
                 topEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
                 window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        };
-
-        // ▼ 댓글 파란색 타이틀 위치로 스크롤
-        doc.getElementById('float-cmt').onclick = () => {
-            const iframes = Array.from(doc.querySelectorAll('iframe'));
-            const articleIframe = iframes.find(i => i.height === "2200" || i.offsetHeight > 500);
-            
-            if (articleIframe) {
-                const iframeRect = articleIframe.getBoundingClientRect();
-                const parentScrollTop = window.parent.pageYOffset || doc.documentElement.scrollTop;
-                
-                // iframe 상단 좌표 + 내부에 계산된 댓글 타이틀 오프셋
-                const targetY = iframeRect.top + parentScrollTop + (window.commentRelativeTop || 800);
-                
-                window.parent.scrollTo({
-                    top: targetY,
-                    behavior: 'smooth'
-                });
             }
         };
 
@@ -517,7 +474,6 @@ if st.session_state.selected_article:
 # 게시글 목록 화면
 # ---------------------------------------------------------
 else:
-    # 목록으로 나올 때는 쿼리 파라미터 초기화
     st.query_params.clear()
 
     components.html("""
